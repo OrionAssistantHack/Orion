@@ -14,6 +14,7 @@ import com.orion.core.Plan
 import com.orion.core.PlanAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -44,6 +45,10 @@ class LiteRTLMManager private constructor(private val context: Context) {
     }
 
     fun sendAgentMessage(screenshotPath: String, prompt: String): Flow<String> {
+        if (engine == null) {
+            Log.w(TAG, "sendAgentMessage called before engine is initialized")
+            return emptyFlow()
+        }
         ensureConversation()
         val contents = Contents.of(
             Content.ImageFile(screenshotPath),

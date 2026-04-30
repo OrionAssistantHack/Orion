@@ -131,26 +131,29 @@ class ScreenCaptureService : Service() {
     private fun runAgentCycle(nodes: List<AccessibilityNodeInfo>) {
         isLoopRunning = true
         serviceScope.launch {
-            val screenshotPath = withContext(Dispatchers.IO) { captureFrameToFile() }
-                ?: run { isLoopRunning = false; return@launch }
+            try {
+                val screenshotPath = withContext(Dispatchers.IO) { captureFrameToFile() }
+                    ?: return@launch
 
-            val manager = LiteRTLMManager.getInstance(this@ScreenCaptureService)
-            val accessService = OrionAccessibilityService.instance
-                ?: run { isLoopRunning = false; return@launch }
-            if (executor == null) executor = AccessibilityAutomationExecutor(accessService)
+                val manager = LiteRTLMManager.getInstance(this@ScreenCaptureService)
+                val accessService = OrionAccessibilityService.instance
+                    ?: return@launch
+                if (executor == null) executor = AccessibilityAutomationExecutor(accessService)
 
-            val nodeList = nodes.mapIndexed { i, n ->
-                "$i: ${n.text?.toString() ?: n.contentDescription?.toString() ?: "(no label)"}"
-            }.joinToString("\n")
-            val prompt = LiteRTLMManager.buildPrompt(currentGoal, nodeList, retryContext())
+                val nodeList = nodes.mapIndexed { i, n ->
+                    "$i: ${n.text?.toString() ?: n.contentDescription?.toString() ?: "(no label)"}"
+                }.joinToString("\n")
+                val prompt = LiteRTLMManager.buildPrompt(currentGoal, nodeList, retryContext())
 
-            val responseBuilder = StringBuilder()
-            manager.sendAgentMessage(screenshotPath, prompt).collect { token ->
-                responseBuilder.append(token)
+                val responseBuilder = StringBuilder()
+                manager.sendAgentMessage(screenshotPath, prompt).collect { token ->
+                    responseBuilder.append(token)
+                }
+                val plan = LiteRTLMManager.parseResponse(responseBuilder.toString())
+                withContext(Dispatchers.IO) { executePlan(plan, nodes) }
+            } finally {
+                isLoopRunning = false
             }
-            val plan = LiteRTLMManager.parseResponse(responseBuilder.toString())
-            withContext(Dispatchers.IO) { executePlan(plan, nodes) }
-            isLoopRunning = false
         }
     }
 
