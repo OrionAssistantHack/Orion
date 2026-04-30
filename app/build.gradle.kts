@@ -17,6 +17,20 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    flavorDimensions += "env"
+    productFlavors {
+        create("staging") {
+            dimension = "env"
+            applicationIdSuffix = ".staging"
+            versionNameSuffix = "-staging"
+            resValue("string", "app_name", "Orion Staging")
+        }
+        create("production") {
+            dimension = "env"
+            // uses defaultConfig values as-is
+        }
+    }
+
     buildFeatures { viewBinding = true }
 
     packaging {
