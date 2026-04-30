@@ -11,6 +11,7 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.IBinder
+import android.util.Log
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
@@ -36,6 +37,8 @@ class ScreenCaptureService : Service() {
     @Volatile private var lastError: String? = null
 
     companion object {
+        private const val TAG = "OrionScreenCapture"
+
         private const val CHANNEL_ID = "OrionCapture"
         private const val NOTIFICATION_ID = 1
         private const val MAX_RETRIES = 3
@@ -73,6 +76,7 @@ class ScreenCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i(TAG, "Service created")
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
     }
@@ -85,6 +89,8 @@ class ScreenCaptureService : Service() {
         val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mgr.getMediaProjection(resultCode, data)
         setupImageReader()
+
+        Log.i(TAG, "Capture started, goal=$currentGoal")
 
         OrionAccessibilityService.instance?.onCaptureRequested = { nodes ->
             if (!isLoopRunning) runAgentCycle(nodes)
@@ -132,6 +138,7 @@ class ScreenCaptureService : Service() {
         isLoopRunning = true
         serviceScope.launch {
             try {
+                Log.d(TAG, "Agent cycle started")
                 val screenshotPath = withContext(Dispatchers.IO) { captureFrameToFile() }
                     ?: return@launch
 
@@ -150,6 +157,7 @@ class ScreenCaptureService : Service() {
                     responseBuilder.append(token)
                 }
                 val plan = LiteRTLMManager.parseResponse(responseBuilder.toString())
+                Log.d(TAG, "Plan parsed: ${plan.summaryForUser}, actions=${plan.actions.size}")
                 withContext(Dispatchers.IO) { executePlan(plan, nodes) }
             } finally {
                 isLoopRunning = false
@@ -196,6 +204,7 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "Service destroyed")
         serviceScope.cancel()
         virtualDisplay?.release()
         imageReader?.close()

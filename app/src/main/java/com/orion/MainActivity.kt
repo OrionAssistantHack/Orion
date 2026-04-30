@@ -4,6 +4,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -14,6 +15,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
+
+    private val TAG = "OrionMainActivity"
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var liteRTLMManager: LiteRTLMManager
@@ -29,6 +32,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i(TAG, "onCreate")
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -123,6 +127,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
                 liteRTLMManager.startConversation()
                 val elapsed = System.currentTimeMillis() - startMs
+                Log.i(TAG, "Model loaded on ${liteRTLMManager.getActiveBackend()} in ${elapsed}ms")
                 binding.textBackendStatus.text = "${liteRTLMManager.getActiveBackend()} — ${elapsed}ms"
                 binding.textStatus.text = getString(R.string.status_ready)
                 binding.btnStart.isEnabled = true
@@ -133,6 +138,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "onDestroy")
         super.onDestroy()
         liteRTLMManager.cleanup()
     }

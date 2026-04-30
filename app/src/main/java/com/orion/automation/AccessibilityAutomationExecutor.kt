@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Bundle
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import com.orion.core.ExecutionResult
 import java.util.concurrent.CountDownLatch
@@ -13,10 +14,15 @@ class AccessibilityAutomationExecutor(
     private val service: AccessibilityService
 ) : AutomationExecutor {
 
-    override fun tapNode(node: AccessibilityNodeInfo): ExecutionResult =
-        ExecutionResult(success = node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    private val TAG = "OrionA11yExecutor"
+
+    override fun tapNode(node: AccessibilityNodeInfo): ExecutionResult {
+        Log.d(TAG, "tapNode: ${node.text}")
+        return ExecutionResult(success = node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    }
 
     override fun dispatchTap(x: Float, y: Float): ExecutionResult {
+        Log.d(TAG, "dispatchTap: ($x, $y)")
         val path = Path().apply { moveTo(x, y) }
         val stroke = GestureDescription.StrokeDescription(path, 0L, 50L)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -31,6 +37,7 @@ class AccessibilityAutomationExecutor(
     }
 
     override fun typeText(node: AccessibilityNodeInfo, text: String): ExecutionResult {
+        Log.d(TAG, "typeText: node=${node.text} text=$text")
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }

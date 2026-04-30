@@ -1,6 +1,7 @@
 package com.orion
 
 import android.accessibilityservice.AccessibilityService
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.*
@@ -13,6 +14,8 @@ class OrionAccessibilityService : AccessibilityService() {
     @Volatile var onCaptureRequested: ((List<AccessibilityNodeInfo>) -> Unit)? = null
 
     companion object {
+        private const val TAG = "OrionAccessibilityService"
+
         val watchedPackages = setOf(
             "com.ubercab",
             "me.lyft.android",
@@ -27,6 +30,7 @@ class OrionAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        Log.i(TAG, "Service connected")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -40,6 +44,7 @@ class OrionAccessibilityService : AccessibilityService() {
         val cb = onCaptureRequested
         debounceJobs[pkg] = serviceScope.launch {
             delay(500)
+            Log.d(TAG, "Capture requested for $pkg")
             val root = rootInActiveWindow ?: return@launch
             cb?.invoke(collectInteractiveNodes(root))
         }
@@ -48,6 +53,7 @@ class OrionAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onDestroy() {
+        Log.i(TAG, "Service destroyed")
         instance = null
         serviceScope.cancel()
         super.onDestroy()
