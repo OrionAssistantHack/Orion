@@ -132,7 +132,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
         contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
 
     companion object {
-        private const val TAG = "LiteRTLMManager"
+        private const val TAG = "OrionLiteRTLMManager"
         private const val SYSTEM_PROMPT =
             "You are Orion, an AI agent that controls Android apps on behalf of the user. " +
             "You receive a screenshot of the current screen and a list of interactive UI nodes. " +
