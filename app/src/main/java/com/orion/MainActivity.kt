@@ -64,10 +64,13 @@ class MainActivity : AppCompatActivity() {
             binding.textStatus.text = "Please enter a goal first"
             return
         }
-        packageManager.getLaunchIntentForPackage(selectedPackage)?.apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(this)
+        val launchIntent = packageManager.getLaunchIntentForPackage(selectedPackage)
+        if (launchIntent == null) {
+            binding.textStatus.text = "Target app not installed"
+            return
         }
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
         val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         startActivityForResult(mgr.createScreenCaptureIntent(), captureRequestCode)
     }
@@ -104,6 +107,13 @@ class MainActivity : AppCompatActivity() {
         val modelFile = java.io.File(modelPath)
         if (!modelFile.exists()) {
             binding.textStatus.text = "Push model.litertlm to ${getExternalFilesDir(null)?.absolutePath}"
+            return
+        }
+        // Already initialized (e.g. after rotation) — just restore UI state
+        if (liteRTLMManager.getActiveBackend() != "None") {
+            binding.textBackendStatus.text = liteRTLMManager.getActiveBackend()
+            binding.textStatus.text = getString(R.string.status_ready)
+            binding.btnStart.isEnabled = true
             return
         }
         binding.textStatus.text = getString(R.string.status_loading)
