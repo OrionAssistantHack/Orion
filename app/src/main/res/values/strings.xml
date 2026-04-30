@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Orion</string>
+    <string name="accessibility_service_description">Orion reads the screen to complete tasks in other apps on your behalf.</string>
+    <string name="hint_goal">What do you want to do?</string>
+    <string name="btn_start">Use Assistant</string>
+    <string name="btn_stop">Stop</string>
+    <string name="status_loading">Loading model…</string>
+    <string name="status_ready">Ready</string>
+    <string name="status_running">Agent running…</string>
+    <string name="status_stopped">Stopped</string>
+    <string name="label_target_app">Target app: </string>
+</resources>
