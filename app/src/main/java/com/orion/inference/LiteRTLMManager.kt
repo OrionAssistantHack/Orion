@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 class LiteRTLMManager private constructor(private val context: Context) {
 
     private var engine: Engine? = null
-    private var conversation: com.google.ai.edge.litertlm.Conversation? = null
+    @Volatile private var conversation: com.google.ai.edge.litertlm.Conversation? = null
     private var activeBackend: String = "None"
     @Volatile private var nativeLibsConfigured = false
 
