@@ -30,10 +30,10 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var executor: AccessibilityAutomationExecutor? = null
-    private var currentGoal = ""
-    private var isLoopRunning = false
-    private var retryCount = 0
-    private var lastError: String? = null
+    @Volatile private var currentGoal = ""
+    @Volatile private var isLoopRunning = false
+    @Volatile private var retryCount = 0
+    @Volatile private var lastError: String? = null
 
     companion object {
         private const val CHANNEL_ID = "OrionCapture"
@@ -114,9 +114,14 @@ class ScreenCaptureService : Service() {
                 image.width + rowPadding / plane.pixelStride, image.height, Bitmap.Config.ARGB_8888
             ).also { it.copyPixelsFromBuffer(plane.buffer) }
             val cropped = Bitmap.createBitmap(bmp, 0, 0, image.width, image.height)
-            if (isFrameSecure(cropped)) return null
+            bmp.recycle()
+            if (isFrameSecure(cropped)) {
+                cropped.recycle()
+                return null
+            }
             val file = File(cacheDir, "orion_frame.png")
             FileOutputStream(file).use { cropped.compress(Bitmap.CompressFormat.PNG, 90, it) }
+            cropped.recycle()
             file.absolutePath
         } finally {
             image.close()
