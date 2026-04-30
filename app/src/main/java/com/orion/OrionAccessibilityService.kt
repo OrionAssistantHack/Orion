@@ -8,9 +8,9 @@ import kotlinx.coroutines.*
 class OrionAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val debounceJobs = mutableMapOf<String, Job>()
+    private val debounceJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
-    var onCaptureRequested: ((List<AccessibilityNodeInfo>) -> Unit)? = null
+    @Volatile var onCaptureRequested: ((List<AccessibilityNodeInfo>) -> Unit)? = null
 
     companion object {
         val watchedPackages = setOf(
@@ -37,10 +37,11 @@ class OrionAccessibilityService : AccessibilityService() {
         ) return
 
         debounceJobs[pkg]?.cancel()
+        val cb = onCaptureRequested
         debounceJobs[pkg] = serviceScope.launch {
             delay(500)
             val root = rootInActiveWindow ?: return@launch
-            onCaptureRequested?.invoke(collectInteractiveNodes(root))
+            cb?.invoke(collectInteractiveNodes(root))
         }
     }
 
