@@ -285,7 +285,7 @@ class ScreenCaptureService : Service() {
                     }
 
                     val fingerprint = nodes.joinToString("|") { it.first }
-                    if (fingerprint == lastNodeFingerprint && lastSuccessfulAction.isNotBlank()) {
+                    if (fingerprint == lastNodeFingerprint && lastSuccessfulAction.isNotBlank() && retryCount == 0) {
                         unchangedFingerprintCount++
                         if (unchangedFingerprintCount <= MAX_UNCHANGED_FINGERPRINT_RETRIES) {
                             bitmapForInference.recycle()
