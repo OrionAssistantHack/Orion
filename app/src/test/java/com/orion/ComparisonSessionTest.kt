@@ -38,32 +38,32 @@ class ComparisonSessionTest {
 
     @Test
     fun session_isCompleteAfterAllApps() {
-        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft", "com.waymo.ridewithwaymo" to "Waymo")
+        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft", "com.waymo.carapp" to "Waymo")
         s.collectedFares["com.ubercab"] = FareData("$14.00", 6, 0.9f)
         s.advance()
         s.collectedFares["com.lyft.android"] = FareData("$12.50", 8, 0.95f)
         s.advance()
-        s.collectedFares["com.waymo.ridewithwaymo"] = FareData("$16.00", 5, 0.8f)
+        s.collectedFares["com.waymo.carapp"] = FareData("$16.00", 5, 0.8f)
         s.advance()
         assertTrue(s.isComplete)
     }
 
     @Test
     fun session_cheapestApp_identifiesLowestPrice() {
-        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft", "com.waymo.ridewithwaymo" to "Waymo")
+        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft", "com.waymo.carapp" to "Waymo")
         s.collectedFares["com.ubercab"] = FareData("$14.00", 6, 0.9f)
         s.collectedFares["com.lyft.android"] = FareData("$12.50", 8, 0.95f)
-        s.collectedFares["com.waymo.ridewithwaymo"] = FareData("$16.00", 5, 0.8f)
+        s.collectedFares["com.waymo.carapp"] = FareData("$16.00", 5, 0.8f)
         assertEquals("com.lyft.android", s.cheapestApp?.packageName)
     }
 
     @Test
     fun session_fastestApp_identifiesLowestEta() {
-        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft", "com.waymo.ridewithwaymo" to "Waymo")
+        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft", "com.waymo.carapp" to "Waymo")
         s.collectedFares["com.ubercab"] = FareData("$14.00", 6, 0.9f)
         s.collectedFares["com.lyft.android"] = FareData("$12.50", 8, 0.95f)
-        s.collectedFares["com.waymo.ridewithwaymo"] = FareData("$16.00", 5, 0.8f)
-        assertEquals("com.waymo.ridewithwaymo", s.fastestApp?.packageName)
+        s.collectedFares["com.waymo.carapp"] = FareData("$16.00", 5, 0.8f)
+        assertEquals("com.waymo.carapp", s.fastestApp?.packageName)
     }
 
     @Test

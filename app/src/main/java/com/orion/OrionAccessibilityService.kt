@@ -22,7 +22,7 @@ class OrionAccessibilityService : AccessibilityService() {
             "com.ubercab",
             "com.lyft.android",
             "me.lyft.android",
-            "com.waymo.ridewithwaymo",
+            "com.waymo.carapp",
             "com.ubercab.eats",
             "com.dd.doordash",
             "com.grubhub.android",

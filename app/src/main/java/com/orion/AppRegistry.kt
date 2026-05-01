@@ -35,7 +35,7 @@ object AppRegistry {
             category = AppCategory.RIDES,
         ),
         KnownApp(
-            packageName = "com.waymo.ridewithwaymo",
+            packageName = "com.waymo.carapp",
             displayName = "Waymo",
             deepLinkScheme = "waymo://",
             supportsSetText = false,
