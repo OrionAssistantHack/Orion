@@ -25,6 +25,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import com.orion.core.PlanAction
+import com.orion.inference.InferenceEngine
 import com.orion.inference.LiteRTLMManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,7 @@ class ScreenCaptureService : Service() {
         var pendingGoal: String = ""
         var targetApp: String = ""
         var onPlanResult: ((String, com.orion.core.Plan) -> Unit)? = null
+        var activeEngine: InferenceEngine? = null
 
         private const val MAX_TAP_RETRIES = 3
 
@@ -91,10 +93,10 @@ class ScreenCaptureService : Service() {
 
         fun triggerCaptureIfReady() {
             val svc = instance?.get() ?: return
-            val lm = LiteRTLMManager.getInstance(svc)
+            val eng = activeEngine ?: return
             if (targetApp.isNotBlank()
                 && OrionAccessibilityService.lastAppPackage == targetApp
-                && lm.isReady()
+                && eng.isReady()
             ) {
                 Log.i(TAG, "triggerCaptureIfReady — firing for $targetApp")
                 svc.captureHandler.post { svc.captureFrame() }
@@ -249,7 +251,7 @@ class ScreenCaptureService : Service() {
                 return
             }
 
-            val lm = LiteRTLMManager.getInstance(this)
+            val lm = activeEngine ?: LiteRTLMManager.getInstance(this)
             if (!flagSecure && lm.isReady()) {
                 if (inferenceActive.compareAndSet(false, true)) {
                     val nodes: List<Pair<String, Rect>> = buildList {
@@ -291,7 +293,7 @@ class ScreenCaptureService : Service() {
 
                     Log.d(TAG, "Collected ${nodes.size} clickable nodes")
 
-                    Log.i(TAG, "=== AGENT CYCLE #$frameNum | goal='$pendingGoal' | backend=${lm.getActiveBackend()} ===")
+                    Log.i(TAG, "=== AGENT CYCLE #$frameNum | goal='$pendingGoal' | backend=${lm.getDescription()} ===")
                     Log.i(TAG, "Nodes (${nodes.size}):\n" + nodes.mapIndexed { i, (text, _) -> "  [${i+1}] $text" }.joinToString("\n"))
 
                     val screenW = bitmapForInference.width
@@ -301,7 +303,7 @@ class ScreenCaptureService : Service() {
                             val inferenceStartMs = System.currentTimeMillis()
                             val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, lastSuccessfulAction)
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
-                            Log.i(TAG, "Frame #$frameNum [${lm.getActiveBackend()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
+                            Log.i(TAG, "Frame #$frameNum [${lm.getDescription()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
                             Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)

@@ -14,6 +14,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.orion.databinding.ActivityMainBinding
+import com.orion.inference.DualNpuPipeline
 import com.orion.inference.LiteRTLMManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var liteRTLMManager: LiteRTLMManager
 
     private var selectedPackage = "com.ubercab"
+    private var selectedMode = "gpu"  // "gpu" or "npu"
 
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -76,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupAppSelector()
+        setupModeSelector()
         setupButtons()
         promptAccessibilityIfNeeded()
         initializeModel()
@@ -93,6 +96,20 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
             binding.layoutAppSelector.addView(btn)
+        }
+    }
+
+    private fun setupModeSelector() {
+        val modes = listOf("Gemma GPU" to "gpu", "NPU Pipeline" to "npu")
+        for ((label, mode) in modes) {
+            val btn = Button(this).apply {
+                text = label
+                setOnClickListener {
+                    selectedMode = mode
+                    binding.textInferenceMode.text = "Inference mode: $label"
+                }
+            }
+            binding.layoutModeSelector.addView(btn)
         }
     }
 
@@ -147,34 +164,59 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeModel() {
-        // Already initialized (e.g. after rotation) — just restore UI state
-        if (liteRTLMManager.getActiveBackend() != "None") {
-            binding.textBackendStatus.text = liteRTLMManager.getActiveBackend()
+        val modelPath = findModelPath() ?: run {
+            binding.textStatus.text = "Push model to ${getExternalFilesDir(null)?.absolutePath}"
+            return
+        }
+
+        // Reuse if already ready on the same mode
+        val existingEngine = ScreenCaptureService.activeEngine
+        if (existingEngine != null && existingEngine.isReady()) {
+            binding.textBackendStatus.text = existingEngine.getDescription()
             binding.textStatus.text = getString(R.string.status_ready)
             binding.btnStart.isEnabled = true
             return
         }
-        val modelPath = findModelPath()
-        if (modelPath == null) {
-            binding.textStatus.text =
-                    "Push model.litertlm to ${getExternalFilesDir(null)?.absolutePath}"
-            return
-        }
+
         binding.textStatus.text = getString(R.string.status_loading)
         lifecycleScope.launch {
             val startMs = System.currentTimeMillis()
             try {
-                withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
+                if (selectedMode == "npu") {
+                    val fastVlmPath = findModelByName(DualNpuPipeline.FASTVLM_MODEL)
+                    val gemmaNpuPath = findModelByName(DualNpuPipeline.GEMMA_NPU_MODEL)
+                    if (fastVlmPath == null || gemmaNpuPath == null) {
+                        binding.textStatus.text = "NPU models not found in /data/local/tmp"
+                        return@launch
+                    }
+                    val pipeline = DualNpuPipeline.getInstance(this@MainActivity)
+                    withContext(Dispatchers.IO) { pipeline.initialize(fastVlmPath, gemmaNpuPath) }
+                    if (!pipeline.isReady()) {
+                        binding.textStatus.text = "NPU pipeline init failed — check logcat"
+                        return@launch
+                    }
+                    ScreenCaptureService.activeEngine = pipeline
+                } else {
+                    val lm = liteRTLMManager
+                    withContext(Dispatchers.IO) { lm.initialize(modelPath) }
+                    ScreenCaptureService.activeEngine = lm
+                }
+                val engine = ScreenCaptureService.activeEngine ?: return@launch
                 val elapsed = System.currentTimeMillis() - startMs
-                Log.i(TAG, "Model loaded on ${liteRTLMManager.getActiveBackend()} in ${elapsed}ms")
-                binding.textBackendStatus.text =
-                        "${liteRTLMManager.getActiveBackend()} — ${elapsed}ms"
+                Log.i(TAG, "${engine.getDescription()} ready in ${elapsed}ms")
+                binding.textBackendStatus.text = "${engine.getDescription()} — ${elapsed}ms"
                 binding.textStatus.text = getString(R.string.status_ready)
                 binding.btnStart.isEnabled = true
+                ScreenCaptureService.triggerCaptureIfReady()
             } catch (e: Exception) {
-                binding.textStatus.text = "Model load failed: ${e.message}"
+                binding.textStatus.text = "Load failed: ${e.message}"
             }
         }
+    }
+
+    private fun findModelByName(name: String): String? {
+        val dirs = listOfNotNull("/data/local/tmp", getExternalFilesDir(null)?.absolutePath)
+        return dirs.map { java.io.File(it, name) }.firstOrNull { it.exists() }?.absolutePath
     }
 
     private fun findModelPath(): String? {
@@ -200,7 +242,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
-        super.onDestroy()
         liteRTLMManager.cleanup()
+        if (ScreenCaptureService.activeEngine is DualNpuPipeline) {
+            ScreenCaptureService.activeEngine?.cleanup()
+        }
+        ScreenCaptureService.activeEngine = null
+        super.onDestroy()
     }
 }

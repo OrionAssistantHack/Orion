@@ -80,6 +80,23 @@
                 android:layout_marginTop="8dp"
                 android:orientation="horizontal" />
 
+            <!-- Inference mode selector -->
+            <TextView
+                android:id="@+id/text_inference_mode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Inference mode: Gemma GPU"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <LinearLayout
+                android:id="@+id/layout_mode_selector"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal" />
+
             <!-- Status text -->
             <TextView
                 android:id="@+id/text_status"

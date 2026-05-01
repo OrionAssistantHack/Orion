@@ -76,7 +76,7 @@ Action type rules:
 - Use type_text ONLY when: a keyboard is already visible on screen AND a text field is actively focused and ready to receive input (e.g. a blinking cursor is visible). Do NOT use type_text on a placeholder that requires a tap to open first."""
 }
 
-class LiteRTLMManager private constructor(private val context: Context) {
+class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
 
     private var engine: Engine? = null
     @Volatile private var conversation: com.google.ai.edge.litertlm.Conversation? = null
@@ -98,11 +98,13 @@ class LiteRTLMManager private constructor(private val context: Context) {
         initializeWithFallback(modelPath, backends, nativeLibDir, generation)
     }
 
-    fun isReady(): Boolean = engine != null
+    override fun isReady(): Boolean = engine != null
 
     fun getActiveBackend(): String = activeBackend
 
-    fun cleanup() {
+    override fun getDescription(): String = "Gemma [${activeBackend}]"
+
+    override fun cleanup() {
         initGeneration++
         conversation?.close()
         conversation = null
@@ -111,7 +113,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
         activeBackend = "None"
     }
 
-    suspend fun perceiveAndPlan(
+    override suspend fun perceiveAndPlan(
         bitmap: Bitmap,
         goal: String = "",
         nodes: List<Pair<String, Rect>> = emptyList(),
@@ -282,6 +284,9 @@ class LiteRTLMManager private constructor(private val context: Context) {
             }
 
         internal fun parseResponse(raw: String): Pair<PerceptionResult, Plan> = companion_parseResponse(raw)
+
+        internal fun fallbackResult(reason: String): Pair<PerceptionResult, Plan> =
+            PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, reason) to Plan("", emptyList())
     }
 
     private data class BackendFactory(val name: String, val create: () -> Backend)
