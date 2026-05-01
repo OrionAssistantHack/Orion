@@ -13,8 +13,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.orion.R
 import com.orion.core.ComparisonSession
 import com.orion.core.KnownApp
 import com.orion.core.ParsedGoal
@@ -202,6 +204,25 @@ object ComparisonOverlay {
             })
             row.addView(rightCol)
             root.addView(row)
+        }
+
+        // Primary CTA — book the cheapest (or first available)
+        val bookTarget = cheapest
+            ?: session.apps.firstOrNull { session.collectedFares.containsKey(it.packageName) }
+        if (bookTarget != null) {
+            root.addView(Button(context).apply {
+                text = "Book with ${bookTarget.displayName} →"
+                setTextColor(0xFFFFFFFF.toInt())
+                setBackgroundResource(R.drawable.bg_gradient_brand)
+                setOnClickListener { dismiss(); onBook(bookTarget) }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = (16 * dp).toInt()
+                    bottomMargin = (8 * dp).toInt()
+                }
+            })
         }
 
         // Dismiss link
