@@ -60,6 +60,9 @@ class ScreenCaptureService : Service() {
 
         private const val MAX_TAP_RETRIES = 3
         private const val MAX_UNCHANGED_FINGERPRINT_RETRIES = 3
+        private const val MIN_NODES_THRESHOLD = 5
+        private const val MAX_THIN_NODE_RETRIES = 2
+        private const val POST_ACTION_DELAY_MS = 2500L
 
         private var instance: WeakReference<ScreenCaptureService>? = null
 
@@ -90,6 +93,8 @@ class ScreenCaptureService : Service() {
                 retryContext = ""
                 lastSuccessfulAction = ""
                 lastNodeFingerprint = ""
+                thinNodeRetryCount = 0
+                postActionCooldownUntil = 0L
             }
         }
 
@@ -111,6 +116,8 @@ class ScreenCaptureService : Service() {
     @Volatile private var lastSuccessfulAction = ""
     @Volatile private var lastNodeFingerprint: String = ""
     @Volatile private var unchangedFingerprintCount: Int = 0
+    @Volatile private var thinNodeRetryCount: Int = 0
+    @Volatile private var postActionCooldownUntil: Long = 0L
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -201,6 +208,13 @@ class ScreenCaptureService : Service() {
             Log.d(TAG, "Inference in flight — dropping frame")
             return
         }
+        val cooldownRemaining = postActionCooldownUntil - System.currentTimeMillis()
+        if (cooldownRemaining > 0) {
+            imageReader?.acquireLatestImage()?.close()
+            Log.d(TAG, "Post-action cooldown — waiting ${cooldownRemaining}ms before next capture")
+            captureHandler.postDelayed({ captureFrame() }, cooldownRemaining)
+            return
+        }
         frameCounter++
         val frameNum = frameCounter
         val image = imageReader?.acquireLatestImage() ?: return
@@ -275,6 +289,16 @@ class ScreenCaptureService : Service() {
                         return
                     }
 
+                    if (nodes.size < MIN_NODES_THRESHOLD && thinNodeRetryCount < MAX_THIN_NODE_RETRIES) {
+                        thinNodeRetryCount++
+                        bitmapForInference.recycle()
+                        inferenceActive.set(false)
+                        Log.w(TAG, "Too few nodes (${nodes.size}/$MIN_NODES_THRESHOLD) — screen may still be loading, retry $thinNodeRetryCount/$MAX_THIN_NODE_RETRIES in 800ms")
+                        captureHandler.postDelayed({ captureFrame() }, 800L)
+                        return
+                    }
+                    thinNodeRetryCount = 0
+
                     val rootPkg = OrionAccessibilityService.instance?.rootInActiveWindow?.also { it.recycle() }?.packageName?.toString()
                     if (targetApp.isNotBlank() && rootPkg != null && rootPkg != targetApp) {
                         bitmapForInference.recycle()
@@ -320,7 +344,7 @@ class ScreenCaptureService : Service() {
                             val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, if (retryCount == 0) lastSuccessfulAction else "", keyboardVisible, focusedInputIndex)
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
                             Log.i(TAG, "Frame #$frameNum [${lm.getDescription()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
-                            Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
+                            // Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
                             logGemmaToQwen(perception.rawDescription, TAG)
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
@@ -348,18 +372,29 @@ class ScreenCaptureService : Service() {
                                             Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
                                             lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
                                             retryContext = ""
+                                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
                                         } else {
                                             Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
                                             retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
                                         }
                                         success
                                     } else {
-                                        val cx = target.second.centerX().toFloat()
-                                        val cy = target.second.centerY().toFloat()
-                                        Log.i(TAG, "Auto-tapping '${target.first}' at ($cx, $cy) [nodeIdx=$nodeIdx]")
-                                        OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
-                                        lastSuccessfulAction = "Tapped '${target.first}'"
-                                        retryContext = ""
+                                        Log.i(TAG, "Auto-tapping '${target.first}' via ACTION_CLICK [nodeIdx=$nodeIdx]")
+                                        val result = OrionAccessibilityService.instance?.executor?.tapNode(target.first)
+                                        val tapped = result?.success == true
+                                        if (tapped) {
+                                            lastSuccessfulAction = "Tapped '${target.first}'"
+                                            retryContext = ""
+                                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                        } else {
+                                            Log.w(TAG, "ACTION_CLICK failed for '${target.first}' (${result?.errorCode}) — falling back to coordinates")
+                                            val cx = target.second.centerX().toFloat()
+                                            val cy = target.second.centerY().toFloat()
+                                            OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
+                                            lastSuccessfulAction = "Tapped '${target.first}'"
+                                            retryContext = ""
+                                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                        }
                                         true
                                     }
                                 } else {
