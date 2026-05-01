@@ -21,11 +21,9 @@ class OrionAccessibilityService : AccessibilityService() {
         var instance: OrionAccessibilityService? = null
             private set
 
-        @Volatile
-        var currentPackage: String = ""
+        @Volatile var currentPackage: String = ""
 
-        @Volatile
-        var lastAppPackage: String = ""
+        @Volatile var lastAppPackage: String = ""
 
         private val SYSTEM_PACKAGES = setOf("com.android.systemui", "android")
 
@@ -52,7 +50,7 @@ class OrionAccessibilityService : AccessibilityService() {
                 if (pkg !in WATCHED_PACKAGES) return
                 Log.i(TAG, "Window changed → package=$pkg class=${event.className}")
                 serviceScope.launch {
-                    delay(500L)
+                    delay(1000L)
                     ScreenCaptureService.triggerCapture()
                 }
             }

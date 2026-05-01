@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import com.orion.core.ExecutionResult
 
+@Suppress("DEPRECATION")
 class AccessibilityAutomationExecutor(private val service: AccessibilityService) : AutomationExecutor {
 
     companion object {

@@ -149,7 +149,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
                     object : MessageCallback {
                         override fun onMessage(message: com.google.ai.edge.litertlm.Message) { sb.append(message.toString()) }
                         override fun onDone() { cont.resume(sb.toString()) }
-                        override fun onError(t: Throwable) { cont.resumeWithException(t) }
+                        override fun onError(throwable: Throwable) { cont.resumeWithException(throwable) }
                     },
                     emptyMap(),
                 )

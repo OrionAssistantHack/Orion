@@ -187,6 +187,7 @@ class ScreenCaptureService : Service() {
         triggerCaptureIfReady()
     }
 
+    @Suppress("DEPRECATION")
     internal fun captureFrame() {
         if (inferenceActive.get()) {
             imageReader?.acquireLatestImage()?.close()
@@ -372,6 +373,7 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun collectClickableNodes(node: AccessibilityNodeInfo, result: MutableList<Pair<String, Rect>>) {
         if (node.isClickable) {
             val text = node.text?.toString()?.takeIf { it.isNotBlank() }
@@ -391,6 +393,7 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun subtreeText(node: AccessibilityNodeInfo): String {
         val parts = mutableListOf<String>()
         for (i in 0 until node.childCount) {
