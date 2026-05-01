@@ -31,9 +31,11 @@ data class PresetCard(
     val emoji: String,
     val title: String,
     val subtitle: String,
-    val packageName: String?,
+    val packageName: String?,   // null = comparison, "" = open anything, else specific app
     val goalTemplate: String,
     val needsDestination: Boolean = false,
+    val promptTitle: String = "Where to?",
+    val promptHint: String = "e.g. SFO Airport",
 )
 
 class MainActivity : AppCompatActivity() {
@@ -129,7 +131,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupCategoryTabs() {
-        val tabs = listOf("rides" to "Rides", "food" to "Food")
+        val tabs = listOf("rides" to "Rides", "food" to "Food", "anything" to "Anything")
         binding.layoutCategoryTabs.removeAllViews()
         for ((key, label) in tabs) {
             val btn = Button(this).apply {
@@ -150,6 +152,11 @@ class MainActivity : AppCompatActivity() {
 
     internal fun selectCategory(key: String) {
         selectedCategory = key
+        selectedPackage = when (key) {
+            "anything" -> ""
+            "food" -> "com.dd.doordash"
+            else -> "com.ubercab"
+        }
         for (i in 0 until binding.layoutCategoryTabs.childCount) {
             val btn = binding.layoutCategoryTabs.getChildAt(i) as? Button ?: continue
             val tabKey = btn.tag as? String ?: continue
@@ -194,6 +201,32 @@ class MainActivity : AppCompatActivity() {
                 packageName = "com.grubhub.android",
                 goalTemplate = "Order food from Grubhub"),
         )
+        "anything" -> listOf(
+            PresetCard("🌐", "Custom goal", "Describe what you need help with",
+                packageName = "",
+                goalTemplate = "[goal]",
+                needsDestination = true,
+                promptTitle = "What do you need help with?",
+                promptHint = "e.g. Book a flight to NYC"),
+            PresetCard("🛒", "Shopping", "Navigate any shopping app",
+                packageName = "",
+                goalTemplate = "Help me find and buy [goal]",
+                needsDestination = true,
+                promptTitle = "What do you want to buy?",
+                promptHint = "e.g. running shoes size 10"),
+            PresetCard("✈️", "Travel", "Book flights, hotels & more",
+                packageName = "",
+                goalTemplate = "Help me book a trip to [goal]",
+                needsDestination = true,
+                promptTitle = "Where are you going?",
+                promptHint = "e.g. Paris next weekend"),
+            PresetCard("🏦", "Banking", "Navigate any banking app",
+                packageName = "",
+                goalTemplate = "Help me [goal]",
+                needsDestination = true,
+                promptTitle = "What do you need help with?",
+                promptHint = "e.g. transfer \$200 to savings"),
+        )
         else -> emptyList()
     }
 
@@ -201,7 +234,9 @@ class MainActivity : AppCompatActivity() {
         binding.layoutCards.removeAllViews()
         val dp = resources.displayMetrics.density
         val cards = presetCardsFor(selectedCategory).filter { card ->
-            card.packageName == null || packageManager.getLaunchIntentForPackage(card.packageName) != null
+            card.packageName == null ||          // comparison mode
+            card.packageName.isEmpty() ||        // open anything
+            packageManager.getLaunchIntentForPackage(card.packageName) != null
         }
         for (card in cards) {
             val cardView = MaterialCardView(this).apply {
@@ -248,17 +283,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun promptDestination(card: PresetCard) {
         val editText = EditText(this).apply {
-            hint = "e.g. SFO Airport"
+            hint = card.promptHint
             val p = (16 * resources.displayMetrics.density).toInt()
             setPadding(p, p, p, p)
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle("Where to?")
+            .setTitle(card.promptTitle)
             .setView(editText)
             .setPositiveButton("Go") { _, _ ->
-                val dest = editText.text.toString().trim()
-                if (dest.isEmpty()) return@setPositiveButton
-                val goal = card.goalTemplate.replace("[destination]", dest)
+                val input = editText.text.toString().trim()
+                if (input.isEmpty()) return@setPositiveButton
+                val goal = card.goalTemplate
+                    .replace("[destination]", input)
+                    .replace("[goal]", input)
                 if (card.packageName != null) selectedPackage = card.packageName
                 binding.editGoal.setText(goal)
                 onSendGoal()
