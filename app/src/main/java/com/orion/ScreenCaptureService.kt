@@ -142,6 +142,7 @@ class ScreenCaptureService : Service() {
                 postActionCooldownUntil = 0L
                 pendingAutoSelectText = null
                 consecutiveNoneCount = 0
+                hideNextCycleText = null
             }
         }
 
@@ -167,6 +168,10 @@ class ScreenCaptureService : Service() {
     @Volatile private var postActionCooldownUntil: Long = 0L
     @Volatile private var pendingAutoSelectText: String? = null
     @Volatile private var consecutiveNoneCount: Int = 0
+    // Set when press_home fires (to the node text we just tapped). The next inference cycle
+    // hides any matching node from the list before sending it to the model, so the model
+    // physically cannot re-pick it. One-shot — cleared after that single cycle.
+    @Volatile private var hideNextCycleText: String? = null
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -409,6 +414,21 @@ class ScreenCaptureService : Service() {
                     val screenH = bitmapForInference.height
                     inferenceScope.launch {
                         try {
+                            // Hide-next-cycle hard filter: when press_home fired last cycle we stashed
+                            // the just-tapped node text. Remove any matching node from the list the
+                            // model sees AND resolves indices against — the prompt is unchanged. The
+                            // constraint is one-shot: cleared after this single cycle so the option
+                            // returns on the cycle after.
+                            val hide = hideNextCycleText
+                            hideNextCycleText = null
+                            val rawNodes = nodes
+                            val nodes: List<Pair<String, Rect>> = if (hide != null) {
+                                rawNodes.filterNot { (text, _) -> text.contains(hide, ignoreCase = true) }
+                                    .also { filtered ->
+                                        val removed = rawNodes.size - filtered.size
+                                        if (removed > 0) Log.i(TAG, "Hide-next-cycle: removed $removed node(s) matching '$hide' (${rawNodes.size}→${filtered.size})")
+                                    }
+                            } else rawNodes
                             val inferenceStartMs = System.currentTimeMillis()
                             val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, if (retryCount == 0) lastSuccessfulAction else "")
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
@@ -638,6 +658,11 @@ class ScreenCaptureService : Service() {
                             } else {
                                 when (actionType) {
                                     "press_home" -> {
+                                        // Extract the node text we just tapped (e.g. "Tapped 'Messages'" → "Messages")
+                                        // and stash it on hideNextCycleText so the next inference cycle removes
+                                        // that node from the list the model sees. We do NOT touch the prompt —
+                                        // the constraint is enforced purely by hiding the node.
+                                        hideNextCycleText = Regex("[Tt]apped '(.+?)'").find(lastSuccessfulAction)?.groupValues?.get(1)
                                         retryCount /= 2
                                         lastSuccessfulAction = ""
                                         retryContext = ""

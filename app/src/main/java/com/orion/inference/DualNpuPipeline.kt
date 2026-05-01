@@ -212,8 +212,9 @@ Action type rules:
 - If "keyboardVisible" is false, action.type MUST be one of "tap_node", "swipe", or "press_home" — "none" is forbidden unless the goal is fully achieved.
 - Use tap_node for buttons, links, cards, and input placeholders. This is the default — only use swipe or press_home below if tap_node clearly cannot make progress.
 - Use "swipe" with direction "up" (reveals content below) or "down" (reveals content above) ONLY when the screen is clearly scrollable and the element you need is off-screen.
-- Use "press_home" ONLY when the current screen does NOT belong to an app where the goal can be accomplished — Android launcher, an unrelated app, or an undismissable system dialog.
-  Never press_home just because a button you want is missing — swipe or tap something else. Never swipe to escape the launcher — press_home."""
+- On the Android launcher / home screen, if the app you need is not visible on this page, swipe up to open the app drawer / app search before tapping any visible app.
+- Use "press_home" ONLY when the current screen does NOT belong to an app where the goal can be accomplished — an unrelated app you opened by mistake, or an undismissable system dialog.
+  Never press_home just because a button you want is missing — swipe or tap something else. Never swipe to escape an unrelated app — press_home."""
     }
 
     @Synchronized

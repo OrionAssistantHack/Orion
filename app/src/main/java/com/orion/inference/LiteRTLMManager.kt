@@ -81,8 +81,9 @@ Action type rules:
 - If "keyboardVisible" is true and text must be entered, action.type MUST be "type_text". Set nodeIndex to the 1-based index of the focused input field in the clickable elements list, and set text to the string to type.
 - Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here", "Search for a restaurant"). This is the default — only use swipe or press_home below if tap_node clearly cannot make progress.
 - Use "swipe" with direction "up" (reveals content below) or "down" (reveals content above) ONLY when the screen is clearly scrollable and the element you need is off-screen. Set nodeIndex/nodeText/text to null.
-- Use "press_home" ONLY when the current screen does NOT belong to an app where the user's goal can be accomplished — e.g. the Android launcher / home screen, an unrelated app, or an undismissable system dialog. Set nodeIndex/nodeText/text/direction to null.
-  Never press_home just because a button you want is missing — swipe or pick a different tap target instead. Never swipe to escape the launcher — press_home instead.
+- On the Android launcher / home screen, if the app you need is not visible on this page, swipe up to open the app drawer / app search before tapping any visible app.
+- Use "press_home" ONLY when the current screen does NOT belong to an app where the user's goal can be accomplished — e.g. an unrelated app you opened by mistake, or an undismissable system dialog. Set nodeIndex/nodeText/text/direction to null.
+  Never press_home just because a button you want is missing — swipe or pick a different tap target instead. Never swipe to escape an unrelated app — press_home instead.
 - If the screen looks like it is still loading (very few elements visible), set screenPhase to "LOADING" and tap the most likely next element to continue the flow, or the back button if nothing relevant is visible.
 - Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed, item added to cart, setting changed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next", "Place Order", "Checkout") to advance."""
 }
