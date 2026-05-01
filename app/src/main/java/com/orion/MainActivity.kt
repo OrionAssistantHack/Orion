@@ -117,18 +117,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchInferenceMode() {
         binding.btnStart.isEnabled = false
-        binding.textStatus.text = getString(R.string.status_loading)
+        binding.textStatus.text = "Unloading current model…"
 
-        // Cleanup whichever engine is currently active
-        val current = ScreenCaptureService.activeEngine
-        if (current is DualNpuPipeline) {
-            current.cleanup()
-        } else {
-            liteRTLMManager.cleanup()
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                val current = ScreenCaptureService.activeEngine
+                if (current is DualNpuPipeline) {
+                    current.cleanup()
+                } else {
+                    liteRTLMManager.cleanup()
+                }
+                ScreenCaptureService.activeEngine = null
+                System.gc()
+                kotlinx.coroutines.delay(500)
+            }
+            initializeModel()
         }
-        ScreenCaptureService.activeEngine = null
-
-        initializeModel()
     }
 
     private fun setupButtons() {
