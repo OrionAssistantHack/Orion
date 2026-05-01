@@ -45,6 +45,7 @@ Orion is an Android application targeting devices with a Qualcomm Snapdragon NPU
 - Qualcomm Snapdragon SoC with Hexagon NPU (required for on-device Gemma inference via LiteRT-LM + QNN)
 - ~3 GB free storage for the model artifact
 - Ability to grant the Accessibility, MediaProjection (screen capture), and "Display over other apps" permissions
+- The **Gemma LiteRT-LM model artifact** — `gemma-4-E4B-it.litertlm` from [huggingface.co/litert-community/gemma-4-E4B-it-litert-lm](https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/blob/main/gemma-4-E4B-it.litertlm), pushed to `/data/local/tmp/` on the device
 
 **Build host requirements**
 - JDK 17
@@ -68,7 +69,18 @@ Orion is an Android application targeting devices with a Qualcomm Snapdragon NPU
    cd agent-poc
    ```
 4. **Connect a Snapdragon Android device** with USB debugging enabled (`adb devices` should list it), or boot a compatible emulator. Note: a non-Snapdragon device or generic emulator can install the app and exercise the UI, but the on-device Gemma engine will not run — Orion is meaningful only on hardware with a Hexagon NPU.
-5. **Place the Gemma model file on the device** at the path the app reads from. The app provisions and loads the LiteRT-LM artifact at runtime; follow the in-app onboarding screens, which guide you through model placement and required permissions.
+5. **Download the Gemma LiteRT-LM model and push it to the device.** Orion loads `gemma-4-E4B-it.litertlm` from `/data/local/tmp/` on the device.
+   ```bash
+   # 1. Download (requires accepting the model's license on Hugging Face)
+   #    https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/blob/main/gemma-4-E4B-it.litertlm
+   wget https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm
+
+   # 2. Push to the device
+   adb push gemma-4-E4B-it.litertlm /data/local/tmp/
+
+   # 3. Verify
+   adb shell ls -lh /data/local/tmp/gemma-4-E4B-it.litertlm
+   ```
 6. **Build the debug APK** to verify the toolchain:
    ```bash
    ./gradlew assembleDebug
