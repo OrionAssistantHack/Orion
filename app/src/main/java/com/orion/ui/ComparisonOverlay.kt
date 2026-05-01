@@ -16,6 +16,7 @@ import com.orion.core.KnownApp
 import com.orion.core.ParsedGoal
 
 private const val TAG = "Orion.ComparisonOverlay"
+private val mainHandler = Handler(Looper.getMainLooper())
 
 object ComparisonOverlay {
 
@@ -27,10 +28,11 @@ object ComparisonOverlay {
             Log.e(TAG, "SYSTEM_ALERT_WINDOW not granted — cannot show overlay")
             return
         }
-        Handler(Looper.getMainLooper()).post {
+        val appCtx = context.applicationContext
+        mainHandler.post {
             dismiss()
-            val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val view = buildView(context, session, onBook)
+            val wm = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val view = buildView(appCtx, session, onBook)
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
