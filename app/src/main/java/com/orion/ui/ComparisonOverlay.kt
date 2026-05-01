@@ -26,6 +26,7 @@ private val mainHandler = Handler(Looper.getMainLooper())
 
 object ComparisonOverlay {
 
+    @Volatile
     private var overlayView: View? = null
 
     fun show(context: Context, session: ComparisonSession, onBook: (KnownApp) -> Unit) {
@@ -52,6 +53,10 @@ object ComparisonOverlay {
     }
 
     fun dismiss() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { dismiss() }
+            return
+        }
         val view = overlayView ?: return
         try {
             val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -74,6 +79,7 @@ object ComparisonOverlay {
             setBackgroundColor(0xFFFFFFFF.toInt())
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
+                    // Extend bottom past view.height so bottom corners are clipped away, leaving only top corners rounded
                     outline.setRoundRect(0, 0, view.width, view.height + (24 * dp).toInt(), 24 * dp)
                 }
             }
