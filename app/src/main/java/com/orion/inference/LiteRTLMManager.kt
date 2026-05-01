@@ -36,16 +36,13 @@ internal fun buildPrompt(
     screenHeight: Int,
     appPackage: String,
     retryContext: String,
-    previousAction: String,
-    keyboardVisible: Boolean,
-    focusedInputIndex: Int
+    previousAction: String
 ): String {
     val nodeList = if (nodes.isNotEmpty()) {
         "\n\nClickable elements on screen:\n" +
         nodes.mapIndexed { i, (text, rect) ->
             val label = if (text.length > 60) text.take(60) + "…" else text
-            val marker = if (i == focusedInputIndex) "  ← INPUT FIELD (text you typed; do NOT tap to select as a result)" else ""
-            "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})$marker"
+            "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})"
         }.joinToString("\n")
     } else ""
 
@@ -60,12 +57,11 @@ internal fun buildPrompt(
     Log.d(TAG, "History prefix:")
     Log.d(TAG, historyPrefix)
 
-    val keyboardFact = "Keyboard visible (verified by Android OS, do not second-guess this): ${if (keyboardVisible) "TRUE" else "FALSE"}\n\n"
-
-    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${keyboardFact}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress?$nodeList
+    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress?$nodeList
 
 Reply ONLY with a single valid JSON object, no markdown:
 {
+  "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
   "action": {
     "type": "<tap_node|type_text|none>",
     "nodeIndex": <1-based index from the clickable elements list, or null>,
@@ -131,9 +127,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         screenHeight: Int,
         appPackage: String,
         retryContext: String,
-        previousAction: String,
-        keyboardVisible: Boolean,
-        focusedInputIndex: Int
+        previousAction: String
     ): Pair<PerceptionResult, Plan> {
         val eng = engine ?: return fallback("engine_null")
         try {
@@ -153,7 +147,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         val imageBytes = stream.toByteArray()
-        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB image + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex).length}ch prompt) keyboardVisible=$keyboardVisible focusedInputIndex=$focusedInputIndex")
+        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB image + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction).length}ch prompt)")
 
         return try {
             val response = suspendCancellableCoroutine { cont ->
@@ -161,7 +155,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
                 conv.sendMessageAsync(
                     Contents.of(listOf(
                         Content.ImageBytes(imageBytes),
-                        Content.Text(buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex)),
+                        Content.Text(buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)),
                     )),
                     object : MessageCallback {
                         override fun onMessage(message: com.google.ai.edge.litertlm.Message) { sb.append(message.toString()) }
@@ -180,7 +174,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
                 val reinitialized = reinitializeWithoutNpu()
                 if (reinitialized) {
                     return try {
-                        perceiveAndPlan(bitmap, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex)
+                        perceiveAndPlan(bitmap, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
                     } catch (e2: Exception) {
                         Log.e(TAG, "perceiveAndPlan() failed after fallback", e2)
                         fallback("error_after_fallback: ${e2.message}")

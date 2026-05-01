@@ -16,9 +16,7 @@ interface InferenceEngine {
         screenHeight: Int = 0,
         appPackage: String = "",
         retryContext: String = "",
-        previousAction: String = "",
-        keyboardVisible: Boolean = false,
-        focusedInputIndex: Int = -1
+        previousAction: String = ""
     ): Pair<PerceptionResult, Plan>
     fun cleanup()
 }

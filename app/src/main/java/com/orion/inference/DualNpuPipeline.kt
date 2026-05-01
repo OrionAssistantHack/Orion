@@ -89,9 +89,7 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
         screenHeight: Int,
         appPackage: String,
         retryContext: String,
-        previousAction: String,
-        keyboardVisible: Boolean,
-        focusedInputIndex: Int
+        previousAction: String
     ): Pair<PerceptionResult, Plan> {
         val fvEng = fastVlmEngine ?: return LiteRTLMManager.fallbackResult("fastvlm_not_ready")
         val gmEng = gemmaEngine ?: return LiteRTLMManager.fallbackResult("gemma_not_ready")
@@ -110,7 +108,7 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
         // Step 2: Gemma NPU — reason about action using text only
         val gemmaStart = System.currentTimeMillis()
         val result = try {
-            val prompt = buildDualPrompt(screenDescription, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex)
+            val prompt = buildDualPrompt(screenDescription, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
             val response = sendTextMessage(prompt, gmEng)
             LiteRTLMManager.parseResponse(response)
         } catch (e: Exception) {
@@ -171,16 +169,13 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
         screenHeight: Int,
         appPackage: String,
         retryContext: String,
-        previousAction: String,
-        keyboardVisible: Boolean,
-        focusedInputIndex: Int
+        previousAction: String
     ): String {
         val nodeList = if (nodes.isNotEmpty()) {
             "\n\nClickable elements on screen:\n" +
             nodes.mapIndexed { i, (text, rect) ->
                 val label = if (text.length > 60) text.take(60) + "…" else text
-                val marker = if (i == focusedInputIndex) "  ← INPUT FIELD (text you typed; do NOT tap to select as a result)" else ""
-                "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})$marker"
+                "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})"
             }.joinToString("\n")
         } else ""
 
@@ -191,12 +186,12 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
 
         val retryPrefix = if (retryContext.isNotBlank()) "IMPORTANT - $retryContext\n\n" else ""
         val historyPrefix = if (previousAction.isNotBlank()) "Previous action: $previousAction — you are now on a NEW screen. Continue navigating toward the goal.\n\n" else ""
-        val keyboardFact = "Keyboard visible (verified by Android OS, do not second-guess this): ${if (keyboardVisible) "TRUE" else "FALSE"}\n\n"
 
-        return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${keyboardFact}${ctx}Screen visual description: $screenDescription$nodeList
+        return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Screen visual description: $screenDescription$nodeList
 
 Reply ONLY with a single valid JSON object, no markdown:
 {
+  "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
   "action": {
     "type": "<tap_node|type_text|none>",
     "nodeIndex": <1-based index from the clickable elements list, or null>,
@@ -210,11 +205,9 @@ Reply ONLY with a single valid JSON object, no markdown:
 }
 Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
-Action type rules (the "Keyboard visible" line above is the ground truth — use it):
-- If Keyboard visible is TRUE and the input field is empty or does not yet contain the goal text, action.type MUST be "type_text". Set "text" to the value derived from the user's goal, and "nodeIndex"/"nodeText" to the INPUT FIELD entry marked above.
-- If Keyboard visible is TRUE and the input field already contains the goal text, action.type MUST be "tap_node" on a search result entry from the list (NOT the INPUT FIELD entry). Pick the result whose text best matches the goal destination.
-- If Keyboard visible is FALSE, action.type MUST be "tap_node". Use tap_node for buttons, links, cards, and input placeholders.
-- Use "none" ONLY when a final confirmation screen is visible (e.g. ride booked, order placed)."""
+Action type rules:
+- If "keyboardVisible" is true, action.type MUST be "type_text" or "none" — tap_node is forbidden.
+- Otherwise use tap_node for buttons, links, cards, and input placeholders."""
     }
 
     @Synchronized
