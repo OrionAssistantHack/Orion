@@ -1,31 +1,30 @@
 package com.orion.automation
 
-import android.view.accessibility.AccessibilityNodeInfo
+import android.graphics.Bitmap
 import com.orion.core.ExecutionResult
 
 class MockAutomationExecutor(
-    private val tapResult: ExecutionResult = ExecutionResult(success = true),
-    private val secureScreen: Boolean = false
+    var secureResult: Boolean = false
 ) : AutomationExecutor {
 
-    val tapNodeCalls = mutableListOf<AccessibilityNodeInfo>()
-    val dispatchTapCalls = mutableListOf<Pair<Float, Float>>()
-    val typeTextCalls = mutableListOf<Pair<AccessibilityNodeInfo, String>>()
+    var lastTappedText: String? = null
+    var lastTapX: Float = 0f
+    var lastTapY: Float = 0f
+    var lastBitmap: Bitmap? = null
 
-    override fun tapNode(node: AccessibilityNodeInfo): ExecutionResult {
-        tapNodeCalls.add(node)
-        return tapResult
+    override fun tapNode(nodeText: String): ExecutionResult {
+        lastTappedText = nodeText
+        return ExecutionResult(true)
     }
 
     override fun dispatchTap(x: Float, y: Float): ExecutionResult {
-        dispatchTapCalls.add(x to y)
-        return tapResult
+        lastTapX = x
+        lastTapY = y
+        return ExecutionResult(true)
     }
 
-    override fun typeText(node: AccessibilityNodeInfo, text: String): ExecutionResult {
-        typeTextCalls.add(node to text)
-        return tapResult
+    override fun isScreenSecure(bitmap: Bitmap): Boolean {
+        lastBitmap = bitmap
+        return secureResult
     }
-
-    override fun isScreenSecure(): Boolean = secureScreen
 }

@@ -1,52 +1,33 @@
 package com.orion.automation
 
-import android.view.accessibility.AccessibilityNodeInfo
+import android.graphics.Bitmap
 import com.orion.core.ExecutionResult
 import org.junit.Assert.*
 import org.junit.Test
-import org.mockito.kotlin.mock
 
 class MockAutomationExecutorTest {
 
-    private val fakeNode: AccessibilityNodeInfo = mock()
-
     @Test
-    fun `tapNode records call and returns configured result`() {
-        val executor = MockAutomationExecutor(tapResult = ExecutionResult(success = true))
-        val result = executor.tapNode(fakeNode)
+    fun `tapNode sets lastTappedText and returns success`() {
+        val executor = MockAutomationExecutor()
+        val result = executor.tapNode("Search")
         assertTrue(result.success)
-        assertEquals(1, executor.tapNodeCalls.size)
-        assertSame(fakeNode, executor.tapNodeCalls[0])
+        assertEquals("Search", executor.lastTappedText)
     }
 
     @Test
-    fun `dispatchTap records coordinates`() {
+    fun `dispatchTap sets lastTapX and lastTapY`() {
         val executor = MockAutomationExecutor()
         executor.dispatchTap(100f, 200f)
-        assertEquals(1, executor.dispatchTapCalls.size)
-        assertEquals(100f, executor.dispatchTapCalls[0].first)
-        assertEquals(200f, executor.dispatchTapCalls[0].second)
+        assertEquals(100f, executor.lastTapX)
+        assertEquals(200f, executor.lastTapY)
     }
 
     @Test
-    fun `typeText records node and text`() {
-        val executor = MockAutomationExecutor()
-        executor.typeText(fakeNode, "hello")
-        assertEquals(1, executor.typeTextCalls.size)
-        assertEquals("hello", executor.typeTextCalls[0].second)
-    }
-
-    @Test
-    fun `isScreenSecure reflects configured value`() {
-        assertTrue(MockAutomationExecutor(secureScreen = true).isScreenSecure())
-        assertFalse(MockAutomationExecutor(secureScreen = false).isScreenSecure())
-    }
-
-    @Test
-    fun `failed tap result propagates`() {
-        val executor = MockAutomationExecutor(tapResult = ExecutionResult(success = false, errorCode = "MISS"))
-        val result = executor.tapNode(fakeNode)
-        assertFalse(result.success)
-        assertEquals("MISS", result.errorCode)
+    fun `isScreenSecure returns secureResult and stores bitmap`() {
+        val executor = MockAutomationExecutor(secureResult = true)
+        val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        assertTrue(executor.isScreenSecure(bitmap))
+        assertSame(bitmap, executor.lastBitmap)
     }
 }
