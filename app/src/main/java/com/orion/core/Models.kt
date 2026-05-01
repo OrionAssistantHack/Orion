@@ -33,3 +33,65 @@ data class PlanAction(
 )
 
 data class Plan(val summaryForUser: String, val actions: List<PlanAction>)
+
+enum class AppCategory { RIDES, FOOD_DELIVERY }
+
+data class KnownApp(
+    val packageName: String,
+    val displayName: String,
+    val deepLinkScheme: String?,
+    val supportsSetText: Boolean,
+    val destinationFieldHint: String,
+    val category: AppCategory,
+)
+
+data class FareData(
+    val price: String,
+    val eta: Int?,
+    val confidence: Float
+)
+
+sealed class ParsedGoal {
+    abstract val rawGoal: String
+
+    data class RideRequest(
+        val destination: String,
+        override val rawGoal: String,
+    ) : ParsedGoal()
+
+    data class FoodOrder(
+        val restaurant: String,
+        val item: String?,
+        override val rawGoal: String,
+    ) : ParsedGoal()
+}
+
+class ComparisonSession(
+    val parsedGoal: ParsedGoal,
+    val apps: List<KnownApp>,
+) {
+    var currentIndex: Int = 0
+        private set
+    val collectedFares: MutableMap<String, FareData> = mutableMapOf()
+
+    val currentApp: KnownApp get() = apps[currentIndex]
+    val isComplete: Boolean get() = currentIndex >= apps.size
+
+    fun advance() { currentIndex++ }
+
+    private fun priceCents(fare: FareData): Double =
+        fare.price.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: Double.MAX_VALUE
+
+    val cheapestApp: KnownApp?
+        get() = collectedFares.entries
+            .minByOrNull { priceCents(it.value) }
+            ?.key
+            ?.let { pkg -> apps.firstOrNull { it.packageName == pkg } }
+
+    val fastestApp: KnownApp?
+        get() = collectedFares.entries
+            .filter { it.value.eta != null }
+            .minByOrNull { it.value.eta!! }
+            ?.key
+            ?.let { pkg -> apps.firstOrNull { it.packageName == pkg } }
+}
