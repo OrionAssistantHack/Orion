@@ -110,7 +110,7 @@ adb logcat Orion.*:V *:S
 2. **Screen Capture (MediaProjection)** — accept the system dialog so the agent can perceive the current screen.
 3. **Display over other apps** — required for the Orion picture-in-picture overlay that shows agent state.
 
-**Driving the agent.** Open Orion, type a goal in plain English (e.g. *"Book the cheapest cab from Caltrain to my office"*), and confirm. Orion brings up a small floating overlay, switches to the relevant apps, and runs the perceive → reason → act loop until the goal is reached or you cancel. Stop it any time by tapping the overlay or disabling the accessibility service.
+**Driving the agent.** Open Orion, type a goal in plain English (e.g. *"Book the cheapest cab from Caltrain to my home"*), and confirm. Orion brings up a small floating overlay, switches to the relevant apps, and runs the perceive → reason → act loop until the goal is reached or you cancel. Stop it any time by tapping the overlay or disabling the accessibility service.
 
 ## Tests
 
@@ -132,7 +132,26 @@ A clean `BUILD SUCCESSFUL` from `testDebugUnitTest` is sufficient to verify the 
 - **Why a Snapdragon device.** The Gemma planner runs on the Hexagon NPU through QNN HTP v79; the bundled `.so` files in [app/src/main/jniLibs/arm64-v8a/](app/src/main/jniLibs/arm64-v8a/) target that backend.
 - **Hardened against screen-capture leaks.** A `FlagSecureActivity` and the accessibility-driven flow are written so secrets typed into other apps are not exfiltrated through the projection stream beyond what the agent itself observes locally.
 - **Power user knob.** `run_linux.sh` filters logcat to the Orion tags (`Orion.MainActivity`, `Orion.A11y`, `Orion.Executor`, `Orion.ScreenCapture`, `Orion.LiteRTLMManager`, `Orion.GemmaNPU`, `Orion.DualNPU`) so you can watch the agent loop in real time.
-- **Roadmap.** Better long-horizon planning, richer memory, broader app coverage, and stronger safety primitives. We intend to open-source Orion as the *OpenClaw for mobile*.
+
+## What's next
+
+We see this hackathon build as the seed of a community-built, on-device agent framework — *the OpenClaw for mobile*. Concretely, the next steps we have lined up are:
+
+**Agent quality**
+- **Long-horizon planning.** Move from a flat perceive → reason → act loop to a hierarchical planner that can decompose a goal ("plan my Friday commute and breakfast") into sub-goals, track progress across them, and recover gracefully when an app changes its UI mid-task.
+- **Richer memory.** A persistent, on-device memory store so Orion can learn user-specific shortcuts (preferred payment, default addresses, dietary preferences) instead of re-deriving them from scratch every run.
+- **Self-critique & verification.** A second on-device pass that checks the screen *after* an action to confirm the intent succeeded, retry on partial failure, and abort safely on unexpected dialogs (auth challenges, paywalls, ToS prompts).
+
+- **Pluggable model backends.** First-class support for Qwen 2.5-VL (already ported to LiteRT-LM as part of this work) and Gemma 3n side-by-side, with a runtime switch so the device can pick the best fit for available memory and thermals.
+- **On-device fine-tuning hooks.** Lightweight LoRA-style adaptation from per-user feedback ("you tapped the wrong button") so the agent improves with use, without ever shipping that signal off-device.
+
+**Safety & trust**
+- **Action policy & confirmation.** A user-configurable policy layer that requires explicit confirmation for irreversible actions (purchases, sends, deletes) and refuses domains the user has marked off-limits.
+- **Auditable run logs.** A signed, on-device log of every screen the agent saw and every action it dispatched, viewable by the user and exportable for debugging — the *only* mechanism by which Orion's behavior leaves the phone, and only at the user's choice.
+- **Red-team harness.** A scripted suite that pits the agent against adversarial UI patterns (dark patterns, prompt-injection text rendered on-screen, fake system dialogs) so we can measure and regress safety, not just capability.
+
+**Community**
+- **Open-source release & contribution guide.** Move this repository to a public, community-friendly home with a `CONTRIBUTING.md`, issue templates, and a public roadmap so others working on on-device agents can extend, fork, and trust it.
 
 ## References
 
