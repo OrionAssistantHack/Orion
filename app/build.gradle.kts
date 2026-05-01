@@ -46,6 +46,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.robolectric)
+    testImplementation("org.json:json:20231013")
 
     androidTestImplementation(libs.test.runner)
     androidTestImplementation(libs.test.ext.junit)
