@@ -20,6 +20,7 @@ private val mainHandler = Handler(Looper.getMainLooper())
 object OrionPipOverlay {
 
     private var pillView: android.view.View? = null
+    @Volatile
     var isShowing: Boolean = false
         private set
 
