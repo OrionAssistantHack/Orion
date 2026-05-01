@@ -1,6 +1,8 @@
 package com.orion.inference
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.system.Os
 import android.util.Log
 import com.google.ai.edge.litertlm.Backend
@@ -9,14 +11,64 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.Message
+import com.google.ai.edge.litertlm.MessageCallback
+import com.google.ai.edge.litertlm.SamplerConfig
+import com.orion.core.PerceptionResult
 import com.orion.core.Plan
 import com.orion.core.PlanAction
+import com.orion.core.ScreenPhase
+import com.orion.core.TapTarget
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+private fun buildPrompt(
+    goal: String,
+    nodes: List<Pair<String, Rect>>,
+    screenWidth: Int,
+    screenHeight: Int,
+    appPackage: String,
+    retryContext: String,
+    previousAction: String
+): String {
+    val nodeList = if (nodes.isNotEmpty()) {
+        "\n\nClickable elements on screen:\n" +
+        nodes.mapIndexed { i, (text, rect) ->
+            val label = if (text.length > 60) text.take(60) + "…" else text
+            "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})"
+        }.joinToString("\n")
+    } else ""
+
+    val ctx = buildString {
+        if (screenWidth > 0) append("Screen: ${screenWidth}x${screenHeight}px. ")
+        if (appPackage.isNotBlank()) append("App: $appPackage. ")
+    }
+
+    val retryPrefix = if (retryContext.isNotBlank()) "IMPORTANT - $retryContext\n\n" else ""
+    val historyPrefix = if (previousAction.isNotBlank()) "Previous action: $previousAction — you are now on a NEW screen. Continue navigating toward the goal.\n\n" else ""
+
+    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What single element should be tapped to make progress?$nodeList
+
+Reply ONLY with a single valid JSON object, no markdown:
+{
+  "screenPhase": "<UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION>",
+  "extractedData": {"price": "...", "eta": "...", "service": "..."},
+  "confidence": 0.0,
+  "summaryForUser": "<one sentence: what action is being taken and why>",
+  "actions": [
+    {"type": "tap_node", "nodeIndex": <1-based>, "nodeText": "<exact text>"}
+    OR
+    {"type": "type_text", "nodeIndex": <1-based index of the input field>, "nodeText": "<exact text of field>", "text": "<text to type>"}
+  ]
+}
+Use empty actions array if no action is needed. nodeIndex must be a valid index from the clickable elements list above. Use type_text when you need to type into an input field (search box, text field). Use tap_node for buttons, links, and cards."""
+}
 
 class LiteRTLMManager private constructor(private val context: Context) {
 
@@ -36,26 +88,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
         initializeWithFallback(modelPath, backends, nativeLibDir)
     }
 
-    fun startConversation() {
-        val config = ConversationConfig(
-            systemInstruction = Contents.of(SYSTEM_PROMPT)
-        )
-        conversation?.close()
-        conversation = engine?.createConversation(config)
-    }
-
-    fun sendAgentMessage(screenshotPath: String, prompt: String): Flow<String> {
-        if (engine == null) {
-            Log.w(TAG, "sendAgentMessage called before engine is initialized")
-            return emptyFlow()
-        }
-        ensureConversation()
-        val contents = Contents.of(
-            Content.ImageFile(screenshotPath),
-            Content.Text(prompt)
-        )
-        return conversation!!.sendMessageAsync(contents).map { msg -> msg.extractText() }
-    }
+    fun isReady(): Boolean = engine != null
 
     fun getActiveBackend(): String = activeBackend
 
@@ -66,6 +99,65 @@ class LiteRTLMManager private constructor(private val context: Context) {
         engine = null
         activeBackend = "None"
     }
+
+    suspend fun perceiveAndPlan(
+        bitmap: Bitmap,
+        goal: String = "",
+        nodes: List<Pair<String, Rect>> = emptyList(),
+        screenWidth: Int = 0,
+        screenHeight: Int = 0,
+        appPackage: String = "",
+        retryContext: String = "",
+        previousAction: String = ""
+    ): Pair<PerceptionResult, Plan> {
+        val eng = engine ?: return fallback("engine_null")
+        try {
+            conversation?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "conversation close failed: ${e.message}")
+        }
+        conversation = try {
+            val samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.2)
+            eng.createConversation(ConversationConfig(samplerConfig = samplerConfig))
+        } catch (e: Exception) {
+            Log.e(TAG, "createConversation failed", e)
+            return fallback("conv_create_failed")
+        }
+        val conv = conversation ?: return fallback("conv_null")
+
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        val imageBytes = stream.toByteArray()
+
+        return try {
+            val response = suspendCancellableCoroutine { cont ->
+                val sb = StringBuilder()
+                conv.sendMessageAsync(
+                    Contents.of(listOf(
+                        Content.ImageBytes(imageBytes),
+                        Content.Text(buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)),
+                    )),
+                    object : MessageCallback {
+                        override fun onMessage(message: com.google.ai.edge.litertlm.Message) { sb.append(message.toString()) }
+                        override fun onDone() { cont.resume(sb.toString()) }
+                        override fun onError(t: Throwable) { cont.resumeWithException(t) }
+                    },
+                    emptyMap(),
+                )
+                cont.invokeOnCancellation { conv.cancelProcess() }
+            }
+            parseResponse(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "perceiveAndPlan() failed", e)
+            fallback("error: ${e.message}")
+        }
+    }
+
+    private fun parseResponse(raw: String): Pair<PerceptionResult, Plan> =
+        companion_parseResponse(raw)
+
+    private fun fallback(reason: String): Pair<PerceptionResult, Plan> =
+        PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, reason) to Plan("", emptyList())
 
     private fun initializeWithFallback(
         modelPath: String,
@@ -124,19 +216,8 @@ class LiteRTLMManager private constructor(private val context: Context) {
         nativeLibsConfigured = true
     }
 
-    private fun ensureConversation() {
-        if (conversation == null) startConversation()
-    }
-
-    private fun Message.extractText(): String =
-        contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
-
     companion object {
         private const val TAG = "OrionLiteRTLMManager"
-        private const val SYSTEM_PROMPT =
-            "You are Orion, an AI agent that controls Android apps on behalf of the user. " +
-            "You receive a screenshot of the current screen and a list of interactive UI nodes. " +
-            "Always respond with a single valid JSON object and nothing else."
 
         @Volatile private var instance: LiteRTLMManager? = null
 
@@ -145,121 +226,53 @@ class LiteRTLMManager private constructor(private val context: Context) {
                 instance ?: LiteRTLMManager(context.applicationContext).also { instance = it }
             }
 
-        fun buildPrompt(goal: String, nodeList: String, retryContext: String?): String {
-            val retrySection = if (retryContext != null) "\nPrevious attempt failed: $retryContext\n" else ""
-            return """
-Goal: $goal
-$retrySection
-Visible UI nodes:
-$nodeList
-
-Respond ONLY with this JSON:
-{
-  "screenPhase": "UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION",
-  "extractedData": {},
-  "confidence": 0.0,
-  "summaryForUser": "...",
-  "actions": [
-    {"type": "tap_node|type_text", "nodeIndex": 0, "nodeText": "...", "text": "...", "x": 0.0, "y": 0.0}
-  ]
-}
-""".trimIndent()
-        }
-
-        fun parseResponse(raw: String): Plan {
-            val start = raw.indexOf('{')
-            val end = raw.lastIndexOf('}')
-            if (start == -1 || end == -1) return Plan("Could not parse response", emptyList())
-            return try {
-                val jsonStr = raw.substring(start, end + 1)
-                val summary = extractJsonString(jsonStr, "summaryForUser") ?: "Processing…"
-                val actionsBlock = extractJsonArray(jsonStr, "actions")
-                    ?: return Plan(summary, emptyList())
-                val actions = splitJsonObjects(actionsBlock).map { obj ->
-                    PlanAction(
-                        type = extractJsonString(obj, "type") ?: "tap_node",
-                        nodeText = extractJsonString(obj, "nodeText"),
-                        nodeIndex = extractJsonInt(obj, "nodeIndex"),
-                        x = extractJsonDouble(obj, "x")?.toFloat(),
-                        y = extractJsonDouble(obj, "y")?.toFloat(),
-                        text = extractJsonString(obj, "text")
-                    )
-                }
-                Plan(summary, actions)
-            } catch (e: Exception) {
-                Plan("Parse error: ${e.message}", emptyList())
-            }
-        }
-
-        /** Extract a string value for [key] from a flat JSON object string. */
-        private fun extractJsonString(json: String, key: String): String? {
-            val pattern = Regex(""""$key"\s*:\s*"((?:[^"\\]|\\.)*)"""")
-            return pattern.find(json)?.groupValues?.get(1)
-                ?.replace("\\\"", "\"")
-                ?.replace("\\\\", "\\")
-                ?.replace("\\n", "\n")
-                ?.ifEmpty { null }
-        }
-
-        /** Extract an integer value for [key] from a flat JSON object string. */
-        private fun extractJsonInt(json: String, key: String): Int? {
-            val pattern = Regex(""""$key"\s*:\s*(-?\d+)""")
-            return pattern.find(json)?.groupValues?.get(1)?.toIntOrNull()
-        }
-
-        /** Extract a double value for [key] from a flat JSON object string. */
-        private fun extractJsonDouble(json: String, key: String): Double? {
-            val pattern = Regex(""""$key"\s*:\s*(-?\d+(?:\.\d+)?)""")
-            return pattern.find(json)?.groupValues?.get(1)?.toDoubleOrNull()
-        }
-
-        /**
-         * Extract the raw content inside the first JSON array for [key].
-         * Returns the content between [ and ] (exclusive).
-         */
-        private fun extractJsonArray(json: String, key: String): String? {
-            val keyIdx = json.indexOf("\"$key\"")
-            if (keyIdx == -1) return null
-            val arrStart = json.indexOf('[', keyIdx)
-            if (arrStart == -1) return null
-            var depth = 0
-            for (i in arrStart until json.length) {
-                when (json[i]) {
-                    '[' -> depth++
-                    ']' -> {
-                        depth--
-                        if (depth == 0) return json.substring(arrStart + 1, i)
-                    }
-                }
-            }
-            return null
-        }
-
-        /**
-         * Split a JSON array body (content between outer [ ]) into individual object strings.
-         */
-        private fun splitJsonObjects(arrayBody: String): List<String> {
-            val objects = mutableListOf<String>()
-            var depth = 0
-            var start = -1
-            for (i in arrayBody.indices) {
-                when (arrayBody[i]) {
-                    '{' -> {
-                        if (depth == 0) start = i
-                        depth++
-                    }
-                    '}' -> {
-                        depth--
-                        if (depth == 0 && start != -1) {
-                            objects.add(arrayBody.substring(start, i + 1))
-                            start = -1
-                        }
-                    }
-                }
-            }
-            return objects
-        }
+        internal fun parseResponse(raw: String): Pair<PerceptionResult, Plan> = companion_parseResponse(raw)
     }
 
     private data class BackendFactory(val name: String, val create: () -> Backend)
+}
+
+private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
+    val start = raw.indexOf('{')
+    val end = raw.lastIndexOf('}')
+    val json = if (start >= 0 && end > start) raw.substring(start, end + 1) else raw
+    return try {
+        val obj = JSONObject(json)
+
+        val phase = try {
+            ScreenPhase.valueOf(obj.getString("screenPhase"))
+        } catch (_: Exception) { ScreenPhase.UNKNOWN }
+
+        val dataObj = obj.optJSONObject("extractedData")
+        val extracted = buildMap<String, String> {
+            dataObj?.keys()?.forEach { k -> put(k, dataObj.getString(k)) }
+        }
+
+        val tapObj = obj.optJSONObject("tapTarget")
+        val tap = tapObj?.let { TapTarget(it.getString("nodeText"), null) }
+
+        val confidence = obj.optDouble("confidence", 0.0).toFloat()
+        val perception = PerceptionResult(phase, extracted, tap, confidence, json)
+
+        val summary = obj.optString("summaryForUser", "")
+        val arr = obj.optJSONArray("actions") ?: JSONArray()
+        val actions = (0 until arr.length()).map { i ->
+            val a = arr.getJSONObject(i)
+            PlanAction(
+                type = a.optString("type", "none"),
+                nodeIndex = if (a.has("nodeIndex")) a.getInt("nodeIndex") - 1 else null,
+                nodeText = a.optString("nodeText").takeIf { it.isNotEmpty() },
+                x = if (a.has("x")) a.getDouble("x").toFloat() else null,
+                y = if (a.has("y")) a.getDouble("y").toFloat() else null,
+                text = a.optString("text").takeIf { it.isNotEmpty() },
+                app = a.optString("app").takeIf { it.isNotEmpty() },
+                fallbackUri = a.optString("fallbackUri").takeIf { it.isNotEmpty() },
+                waitForPhase = a.optString("waitForPhase").takeIf { it.isNotEmpty() },
+            )
+        }
+        perception to Plan(summary, actions)
+    } catch (e: JSONException) {
+        Log.w("OrionLiteRTLMManager", "Failed to parse response JSON: $json")
+        PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, raw) to Plan(raw.take(120), emptyList())
+    }
 }
