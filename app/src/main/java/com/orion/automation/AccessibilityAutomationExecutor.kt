@@ -2,47 +2,119 @@ package com.orion.automation
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Path
 import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import com.orion.core.ExecutionResult
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
-class AccessibilityAutomationExecutor(
-    private val service: AccessibilityService
-) : AutomationExecutor {
+class AccessibilityAutomationExecutor(private val service: AccessibilityService) : AutomationExecutor {
 
-    private val TAG = "OrionA11yExecutor"
+    companion object {
+        private const val TAG = "Orion.Executor"
+    }
 
-    override fun tapNode(node: AccessibilityNodeInfo): ExecutionResult {
-        Log.d(TAG, "tapNode: ${node.text}")
-        return ExecutionResult(success = node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    private fun findNodesByTextDFS(node: AccessibilityNodeInfo, targetText: String): List<AccessibilityNodeInfo> {
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        val lower = targetText.lowercase()
+        val text = node.text?.toString()?.lowercase() ?: ""
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        if (text.contains(lower) || desc.contains(lower)) {
+            result.add(AccessibilityNodeInfo.obtain(node))
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            result.addAll(findNodesByTextDFS(child, targetText))
+            child.recycle()
+        }
+        return result
+    }
+
+    override fun tapNode(nodeText: String): ExecutionResult {
+        val root = service.rootInActiveWindow ?: return ExecutionResult(false, errorCode = "NO_ROOT")
+        return try {
+            var candidates = root.findAccessibilityNodeInfosByText(nodeText)
+            if (candidates.isNullOrEmpty()) {
+                Log.d(TAG, "tapNode: standard search empty for '$nodeText', trying DFS")
+                candidates = findNodesByTextDFS(root, nodeText)
+            }
+            if (candidates.isNullOrEmpty()) {
+                return ExecutionResult(false, errorCode = "NODE_NOT_FOUND")
+            }
+            var tapped = false
+            outer@ for (node in candidates) {
+                if (node.isClickable) {
+                    val ok = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    node.recycle()
+                    if (ok) { tapped = true; break@outer }
+                    continue
+                }
+                var ancestor = node.parent
+                while (ancestor != null) {
+                    if (ancestor.isClickable) {
+                        val ok = ancestor.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        ancestor.recycle()
+                        if (ok) tapped = true
+                        break
+                    }
+                    val next = ancestor.parent
+                    ancestor.recycle()
+                    ancestor = next
+                }
+                node.recycle()
+                if (tapped) break@outer
+            }
+            ExecutionResult(tapped, errorCode = if (tapped) null else "CLICK_FAILED")
+        } finally {
+            root.recycle()
+        }
     }
 
     override fun dispatchTap(x: Float, y: Float): ExecutionResult {
-        Log.d(TAG, "dispatchTap: ($x, $y)")
-        val path = Path().apply { moveTo(x, y) }
-        val stroke = GestureDescription.StrokeDescription(path, 0L, 50L)
-        val gesture = GestureDescription.Builder().addStroke(stroke).build()
-        val latch = CountDownLatch(1)
-        var succeeded = false
-        service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
-            override fun onCompleted(g: GestureDescription) { succeeded = true; latch.countDown() }
-            override fun onCancelled(g: GestureDescription) { latch.countDown() }
+        val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y + 1f) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, 100L)
+        val gesture = GestureDescription.Builder()
+            .addStroke(stroke)
+            .setDisplayId(android.view.Display.DEFAULT_DISPLAY)
+            .build()
+        val dispatched = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(g: GestureDescription) { Log.i(TAG, "dispatchTap: onCompleted ($x, $y)") }
+            override fun onCancelled(g: GestureDescription) { Log.w(TAG, "dispatchTap: onCancelled ($x, $y)") }
         }, null)
-        latch.await(2, TimeUnit.SECONDS)
-        return ExecutionResult(success = succeeded)
-    }
-
-    override fun typeText(node: AccessibilityNodeInfo, text: String): ExecutionResult {
-        Log.d(TAG, "typeText: node=${node.text} text=$text")
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        if (!dispatched) {
+            Log.e(TAG, "dispatchGesture returned false — service not connected?")
+            return ExecutionResult(false, errorCode = "DISPATCH_FAILED")
         }
-        return ExecutionResult(success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+        Thread.sleep(200)
+        return ExecutionResult(true)
     }
 
-    override fun isScreenSecure(): Boolean = false
+    fun dispatchText(node: AccessibilityNodeInfo, text: String): Boolean {
+        val args = Bundle()
+        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        val success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        Log.i(TAG, "dispatchText('$text') → success=$success")
+        return success
+    }
+
+    override fun isScreenSecure(bitmap: Bitmap): Boolean {
+        val cx = bitmap.width / 2
+        val cy = bitmap.height / 2
+        val center = bitmap.getPixel(cx, cy)
+        if (Color.red(center) >= 30 || Color.green(center) >= 30 || Color.blue(center) >= 30) {
+            Log.d(TAG, "isScreenSecure: center not near-black — fast false")
+            return false
+        }
+        val fractions = floatArrayOf(0.1f, 0.3f, 0.5f, 0.7f, 0.9f)
+        var blackCount = 0
+        for (fx in fractions) for (fy in fractions) {
+            val px = bitmap.getPixel((bitmap.width * fx).toInt(), (bitmap.height * fy).toInt())
+            if (Color.red(px) < 30 && Color.green(px) < 30 && Color.blue(px) < 30) blackCount++
+        }
+        val secure = blackCount >= 24
+        Log.d(TAG, "isScreenSecure: grid blackCount=$blackCount/25 secure=$secure")
+        return secure
+    }
 }
