@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var liteRTLMManager: LiteRTLMManager
 
     private var selectedPackage = "com.ubercab"
-    private var selectedMode = "npu_gemma"
+    private var selectedMode = "gpu"
 
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -270,10 +270,7 @@ class MainActivity : AppCompatActivity() {
         for (name in modelNames) {
             for (dir in searchDirs) {
                 val f = java.io.File(dir, name)
-                if (f.exists()) {
-                    Log.i(TAG, "Found model: ${f.absolutePath}")
-                    return f.absolutePath
-                }
+                if (f.exists()) return f.absolutePath
             }
         }
         return null
