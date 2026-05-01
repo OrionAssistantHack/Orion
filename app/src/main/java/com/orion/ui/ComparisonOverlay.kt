@@ -30,7 +30,7 @@ object ComparisonOverlay {
     @Volatile
     private var overlayView: View? = null
 
-    fun show(context: Context, session: ComparisonSession, onBook: (KnownApp) -> Unit) {
+    fun show(context: Context, session: ComparisonSession, onBook: (KnownApp) -> Unit, onDismiss: (() -> Unit)? = null) {
         if (!Settings.canDrawOverlays(context)) {
             Log.e(TAG, "SYSTEM_ALERT_WINDOW not granted — cannot show overlay")
             return
@@ -39,7 +39,7 @@ object ComparisonOverlay {
         mainHandler.post {
             dismiss()
             val wm = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val view = buildView(appCtx, session, onBook)
+            val view = buildView(appCtx, session, onBook, onDismiss)
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -72,6 +72,7 @@ object ComparisonOverlay {
         context: Context,
         session: ComparisonSession,
         onBook: (KnownApp) -> Unit,
+        onDismiss: (() -> Unit)? = null,
     ): View {
         val dp = context.resources.displayMetrics.density
 
@@ -260,11 +261,17 @@ object ComparisonOverlay {
             setTextColor(0xFF6B7280.toInt())
             textSize = 13f
             gravity = Gravity.CENTER
+            val vPad = (16 * dp).toInt()
+            setPadding(0, vPad, 0, vPad)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            setOnClickListener { dismiss() }
+            setOnClickListener {
+                dismiss()
+                OrionPipOverlay.dismiss()
+                onDismiss?.invoke()
+            }
         })
 
         return root

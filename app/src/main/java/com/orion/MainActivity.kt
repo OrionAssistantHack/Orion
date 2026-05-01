@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
                     return@registerForActivityResult
                 }
                 val session = com.orion.core.ComparisonSession(pending, installedApps)
+                ScreenCaptureService.onSessionDismissed = { runOnUiThread { showIdleState(); setStatusPill("ready") } }
                 ScreenCaptureService.startComparison(
                     context = this,
                     resultCode = result.resultCode,
@@ -354,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         binding.textGoalRecap.text = goal
         binding.scrollCards.visibility = View.GONE
         binding.scrollRunning.visibility = View.VISIBLE
+        binding.btnSend.isEnabled = false
         for (i in 0 until binding.layoutCategoryTabs.childCount) {
             binding.layoutCategoryTabs.getChildAt(i).isEnabled = false
         }
@@ -362,6 +364,7 @@ class MainActivity : AppCompatActivity() {
     private fun showIdleState() {
         binding.scrollCards.visibility = View.VISIBLE
         binding.scrollRunning.visibility = View.GONE
+        binding.btnSend.isEnabled = true
         for (i in 0 until binding.layoutCategoryTabs.childCount) {
             binding.layoutCategoryTabs.getChildAt(i).isEnabled = true
         }
@@ -369,6 +372,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun onStopAssistant() {
         ScreenCaptureService.comparisonSession = null
+        ScreenCaptureService.onSessionDismissed = null
         ComparisonOverlay.dismiss()
         OrionPipOverlay.dismiss()
         pendingComparisonGoal = null
@@ -433,6 +437,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         ScreenCaptureService.onBookingChosen = null
+        ScreenCaptureService.onSessionDismissed = null
         OrionPipOverlay.dismiss()
         ScreenCaptureService.activeEngine?.cleanup()
         ScreenCaptureService.activeEngine = null

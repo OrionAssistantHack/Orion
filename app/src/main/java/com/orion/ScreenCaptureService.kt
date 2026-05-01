@@ -79,6 +79,7 @@ class ScreenCaptureService : Service() {
 
         @Volatile var comparisonSession: com.orion.core.ComparisonSession? = null
         @Volatile var onBookingChosen: ((com.orion.core.KnownApp) -> Unit)? = null
+        @Volatile var onSessionDismissed: (() -> Unit)? = null
 
         fun startComparison(
             context: Context,
@@ -464,10 +465,10 @@ class ScreenCaptureService : Service() {
                                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                                             com.orion.ui.ComparisonOverlay.show(
                                                 this@ScreenCaptureService,
-                                                capturedSession
-                                            ) { chosenApp ->
-                                                onBookingChosen?.invoke(chosenApp)
-                                            }
+                                                capturedSession,
+                                                onBook = { chosenApp -> onBookingChosen?.invoke(chosenApp) },
+                                                onDismiss = { onSessionDismissed?.invoke() }
+                                            )
                                             stopSelf()
                                         }
                                     } else {
@@ -488,9 +489,12 @@ class ScreenCaptureService : Service() {
                                                     val capturedSession2 = session
                                                     comparisonSession = null
                                                     android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                                        com.orion.ui.ComparisonOverlay.show(this@ScreenCaptureService, capturedSession2) { chosenApp ->
-                                                            onBookingChosen?.invoke(chosenApp)
-                                                        }
+                                                        com.orion.ui.ComparisonOverlay.show(
+                                                            this@ScreenCaptureService,
+                                                            capturedSession2,
+                                                            onBook = { chosenApp -> onBookingChosen?.invoke(chosenApp) },
+                                                            onDismiss = { onSessionDismissed?.invoke() }
+                                                        )
                                                         stopSelf()
                                                     }
                                                 } else {
