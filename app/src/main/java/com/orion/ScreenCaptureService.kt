@@ -41,6 +41,17 @@ import java.io.FileWriter
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
 
+private fun buildComparisonGoal(goal: com.orion.core.ParsedGoal): String = when (goal) {
+    is com.orion.core.ParsedGoal.RideRequest ->
+        "Navigate to the fare estimate screen for destination: ${goal.destination}. " +
+        "STOP at the fare estimate screen — do NOT tap Book, Request, Confirm, or any booking button."
+    is com.orion.core.ParsedGoal.FoodOrder ->
+        "Search for restaurant '${goal.restaurant}'" +
+        (goal.item?.let { " and find item '$it'" } ?: "") +
+        ". Navigate to the order summary page. " +
+        "STOP before placing the order — do NOT tap Place Order, Checkout, or any submit button."
+}
+
 class ScreenCaptureService : Service() {
 
     companion object {
@@ -57,6 +68,30 @@ class ScreenCaptureService : Service() {
         var targetApp: String = ""
         var onPlanResult: ((String, com.orion.core.Plan) -> Unit)? = null
         var activeEngine: InferenceEngine? = null
+
+        @Volatile var comparisonSession: com.orion.core.ComparisonSession? = null
+        var onBookingChosen: ((com.orion.core.KnownApp) -> Unit)? = null
+
+        fun startComparison(
+            context: Context,
+            resultCode: Int,
+            data: Intent,
+            session: com.orion.core.ComparisonSession,
+            onBook: (com.orion.core.KnownApp) -> Unit,
+        ) {
+            comparisonSession = session
+            onBookingChosen = onBook
+            targetApp = session.currentApp?.packageName ?: return
+            pendingGoal = buildComparisonGoal(session.parsedGoal)
+            context.startForegroundService(
+                Intent(context, ScreenCaptureService::class.java).apply {
+                    putExtra(EXTRA_RESULT_CODE, resultCode)
+                    putExtra(EXTRA_PROJECTION_DATA, data)
+                    putExtra(EXTRA_GOAL, pendingGoal)
+                    putExtra(EXTRA_APP, targetApp)
+                }
+            )
+        }
 
         private const val MAX_TAP_RETRIES = 3
         private const val MAX_UNCHANGED_FINGERPRINT_RETRIES = 3
@@ -340,6 +375,52 @@ class ScreenCaptureService : Service() {
                             logGemmaToQwen(perception.rawDescription, TAG)
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
+
+                            // Comparison mode: when fare estimate screen reached with price, advance to next app.
+                            val session = comparisonSession
+                            if (session != null && !session.isComplete) {
+                                val price = perception.extractedData["price"]
+                                    ?.takeIf { it.isNotBlank() && it != "null" }
+                                if (perception.screenPhase == com.orion.core.ScreenPhase.FARE_ESTIMATE && price != null) {
+                                    val eta = perception.extractedData["eta"]
+                                        ?.replace(Regex("[^0-9]"), "")
+                                        ?.toIntOrNull()
+                                    val currentPkg = session.currentApp?.packageName
+                                    if (currentPkg != null) {
+                                        session.collectedFares[currentPkg] =
+                                            com.orion.core.FareData(price, eta, perception.confidence)
+                                        Log.i(TAG, "Comparison: fare collected for $currentPkg — price=$price eta=$eta")
+                                    }
+                                    session.advance()
+
+                                    if (session.isComplete) {
+                                        Log.i(TAG, "Comparison: all fares collected — showing overlay")
+                                        val capturedSession = session
+                                        comparisonSession = null
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                            com.orion.ui.ComparisonOverlay.show(
+                                                this@ScreenCaptureService,
+                                                capturedSession
+                                            ) { chosenApp ->
+                                                onBookingChosen?.invoke(chosenApp)
+                                            }
+                                        }
+                                    } else {
+                                        val nextApp = session.currentApp
+                                        if (nextApp != null) {
+                                            Log.i(TAG, "Comparison: advancing to ${nextApp.packageName}")
+                                            targetApp = nextApp.packageName
+                                            pendingGoal = buildComparisonGoal(session.parsedGoal)
+                                            resetGoalState()
+                                            val intent = packageManager.getLaunchIntentForPackage(nextApp.packageName)
+                                                ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            if (intent != null) startActivity(intent)
+                                            else Log.w(TAG, "Comparison: ${nextApp.packageName} not installed — skipping")
+                                        }
+                                    }
+                                    return@launch  // skip action execution — fare collected, session advanced
+                                }
+                            }
 
                             val actionExecuted = if (plan.actions.isNotEmpty()) {
                                 val action = plan.actions[0]
