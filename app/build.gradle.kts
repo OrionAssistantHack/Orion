@@ -47,6 +47,8 @@ dependencies {
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.robolectric)
     testImplementation("org.json:json:20231013")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
 
     androidTestImplementation(libs.test.runner)
     androidTestImplementation(libs.test.ext.junit)
