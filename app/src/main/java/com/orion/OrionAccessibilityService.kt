@@ -20,6 +20,17 @@ class OrionAccessibilityService : AccessibilityService() {
         private const val MAX_WAIT_MS = 3000L
         // Packages we never treat as a target. System UI noise + ourselves.
         private val IGNORED_PACKAGES = setOf("com.android.systemui", "android", "com.orion")
+        private val WATCHED_PACKAGES = setOf(
+            "com.ubercab",
+            "com.lyft.android",
+            "me.lyft.android",
+            "com.waymo.carapp",
+            "com.ubercab.eats",
+            "com.dd.doordash",
+            "com.grubhub.android",
+            "com.google.aiedge.gallery",
+        )
+        private val SYSTEM_PACKAGES = setOf("com.android.systemui", "android")
 
         @Volatile var instance: OrionAccessibilityService? = null
             private set

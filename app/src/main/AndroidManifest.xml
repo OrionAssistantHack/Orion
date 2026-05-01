@@ -17,7 +17,7 @@
         <package android:name="com.ubercab" />
         <package android:name="com.lyft.android" />
         <package android:name="me.lyft.android" />
-        <package android:name="com.waymo.ridewithwaymo" />
+        <package android:name="com.waymo.carapp" />
         <!-- FOOD DELIVERY -->
         <package android:name="com.ubercab.eats" />
         <package android:name="com.dd.doordash" />
