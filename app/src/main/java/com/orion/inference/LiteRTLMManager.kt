@@ -21,7 +21,6 @@ import com.orion.core.TapTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -58,27 +57,27 @@ internal fun buildPrompt(
     Log.d(TAG, "History prefix:")
     Log.d(TAG, historyPrefix)
 
-    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress based on the summary you are providing to the user?$nodeList
+    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress?$nodeList
 
 Reply ONLY with a single valid JSON object, no markdown:
 {
+  "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
+  "action": {
+    "type": "<tap_node|type_text|none>",
+    "nodeIndex": <1-based index from the clickable elements list, or null>,
+    "nodeText": "<exact text of the node, or null>",
+    "text": "<text to type if type_text, otherwise null>"
+  },
   "screenPhase": "<UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION>",
   "extractedData": {"price": "...", "eta": "...", "service": "..."},
   "confidence": 0.0,
-  "summaryForUser": "<one sentence: what action is being taken>",
-  "actions": [
-    {"type": "tap_node", "nodeIndex": <1-based>, "nodeText": "<exact text>"}
-    OR
-    {"type": "type_text", "nodeIndex": <1-based index of the input field>, "nodeText": "<exact text of field>", "text": "<text to type>"}
-  ]
+  "summaryForUser": "<one sentence: what action is being taken>"
 }
-Use empty actions array if no action is needed. nodeIndex must be a valid index from the clickable elements list above.
+Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
 Action type rules:
-- Use tap_node for: buttons, links, cards, navigation elements, and search placeholders (e.g. "Where to?", "Search here") — anything that may open a new screen or focus an input when tapped.
-- Use type_text ONLY when: A KEYBOARD IS ALREADY VISIBLE ON THE SCREEN.
-
-Analyze the Android app screenshot. What single action should be taken to make progress?"""
+- If "keyboardVisible" is true, action.type MUST be "type_text" or "none" — tap_node is forbidden.
+- Otherwise use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here")."""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
@@ -320,20 +319,26 @@ private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
         val perception = PerceptionResult(phase, extracted, tap, confidence, json)
 
         val summary = obj.optString("summaryForUser", "")
-        val arr = obj.optJSONArray("actions") ?: JSONArray()
-        val actions = (0 until arr.length()).map { i ->
-            val a = arr.getJSONObject(i)
-            PlanAction(
-                type = a.optString("type", "none"),
-                nodeIndex = if (a.has("nodeIndex")) a.getInt("nodeIndex") - 1 else null,
-                nodeText = a.optString("nodeText").takeIf { it.isNotEmpty() },
-                x = if (a.has("x")) a.getDouble("x").toFloat() else null,
-                y = if (a.has("y")) a.getDouble("y").toFloat() else null,
-                text = a.optString("text").takeIf { it.isNotEmpty() },
-                app = a.optString("app").takeIf { it.isNotEmpty() },
-                fallbackUri = a.optString("fallbackUri").takeIf { it.isNotEmpty() },
-                waitForPhase = a.optString("waitForPhase").takeIf { it.isNotEmpty() },
-            )
+        val actionObj = obj.optJSONObject("action")
+        val actions = if (actionObj != null) {
+            val type = actionObj.optString("type", "none")
+            if (type == "none" || type.isEmpty()) {
+                emptyList()
+            } else {
+                listOf(PlanAction(
+                    type = type,
+                    nodeIndex = if (actionObj.has("nodeIndex") && !actionObj.isNull("nodeIndex")) actionObj.getInt("nodeIndex") - 1 else null,
+                    nodeText = actionObj.optString("nodeText").takeIf { it.isNotEmpty() && it != "null" },
+                    x = if (actionObj.has("x") && !actionObj.isNull("x")) actionObj.getDouble("x").toFloat() else null,
+                    y = if (actionObj.has("y") && !actionObj.isNull("y")) actionObj.getDouble("y").toFloat() else null,
+                    text = actionObj.optString("text").takeIf { it.isNotEmpty() && it != "null" },
+                    app = actionObj.optString("app").takeIf { it.isNotEmpty() && it != "null" },
+                    fallbackUri = actionObj.optString("fallbackUri").takeIf { it.isNotEmpty() && it != "null" },
+                    waitForPhase = actionObj.optString("waitForPhase").takeIf { it.isNotEmpty() && it != "null" },
+                ))
+            }
+        } else {
+            emptyList()
         }
         perception to Plan(summary, actions)
     } catch (e: JSONException) {

@@ -191,21 +191,23 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
 
 Reply ONLY with a single valid JSON object, no markdown:
 {
+  "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
+  "action": {
+    "type": "<tap_node|type_text|none>",
+    "nodeIndex": <1-based index from the clickable elements list, or null>,
+    "nodeText": "<exact text of the node, or null>",
+    "text": "<text to type if type_text, otherwise null>"
+  },
   "screenPhase": "<UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION>",
   "extractedData": {"price": "...", "eta": "...", "service": "..."},
   "confidence": 0.0,
-  "summaryForUser": "<one sentence: what action is being taken and why>",
-  "actions": [
-    {"type": "tap_node", "nodeIndex": <1-based>, "nodeText": "<exact text>"}
-    OR
-    {"type": "type_text", "nodeIndex": <1-based index of the input field>, "nodeText": "<exact text of field>", "text": "<text to type>"}
-  ]
+  "summaryForUser": "<one sentence: what action is being taken and why>"
 }
-Use empty actions array if no action is needed. nodeIndex must be a valid index from the clickable elements list above.
+Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
 Action type rules:
-- Use tap_node for: buttons, links, cards, navigation elements, and search placeholders — anything that may open a new screen or focus an input when tapped.
-- Use type_text ONLY when a keyboard is already visible AND a text field is actively focused and ready to receive input."""
+- If "keyboardVisible" is true, action.type MUST be "type_text" or "none" — tap_node is forbidden.
+- Otherwise use tap_node for buttons, links, cards, and input placeholders."""
     }
 
     @Synchronized
