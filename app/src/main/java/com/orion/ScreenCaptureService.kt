@@ -332,7 +332,8 @@ class ScreenCaptureService : Service() {
                                             lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
                                             retryContext = ""
                                         } else {
-                                            Log.w(TAG, "type_text failed for '${target.first}' — will retry")
+                                            Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
+                                            retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
                                         }
                                         success
                                     } else {

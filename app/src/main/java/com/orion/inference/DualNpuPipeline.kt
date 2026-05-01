@@ -11,16 +11,14 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.MessageCallback
-import com.google.ai.edge.litertlm.SamplerConfig
 import com.orion.core.PerceptionResult
 import com.orion.core.Plan
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+
+private fun com.google.ai.edge.litertlm.Message.extractText(): String =
+    contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
 
 class DualNpuPipeline private constructor(private val context: Context) : InferenceEngine {
 
@@ -124,48 +122,40 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
     }
 
     private suspend fun describeScreen(bitmap: Bitmap, eng: Engine): String {
-        val conv = eng.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.2)))
+        // Save bitmap to a temp file — NPU requires Content.ImageFile, not Content.ImageBytes
+        val imageFile = java.io.File(context.cacheDir, "fastvlm_input_${System.currentTimeMillis()}.png")
+        try {
+            imageFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write temp image: ${e.message}")
+            throw e
+        }
+
+        val conv = eng.createConversation(ConversationConfig())
         return try {
-            val stream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            val imageBytes = stream.toByteArray()
-            suspendCancellableCoroutine { cont ->
-                val sb = StringBuilder()
-                conv.sendMessageAsync(
-                    Contents.of(listOf(
-                        Content.ImageBytes(imageBytes),
-                        Content.Text("Describe all interactive UI elements visible on this Android app screenshot. List every button, text field, search bar, card, label, and navigation element with their exact text content."),
-                    )),
-                    object : MessageCallback {
-                        override fun onMessage(msg: com.google.ai.edge.litertlm.Message) { sb.append(msg.toString()) }
-                        override fun onDone() { cont.resume(sb.toString()) }
-                        override fun onError(t: Throwable) { cont.resumeWithException(t) }
-                    },
-                    emptyMap(),
-                )
-                cont.invokeOnCancellation { conv.cancelProcess() }
+            val contents = Contents.of(
+                Content.ImageFile(imageFile.absolutePath),
+                Content.Text("Describe all interactive UI elements visible on this Android app screenshot. List every button, text field, search bar, card, label, and navigation element with their exact text content.")
+            )
+            val sb = StringBuilder()
+            conv.sendMessageAsync(contents).collect { msg ->
+                sb.append(msg.extractText())
             }
+            sb.toString()
         } finally {
             try { conv.close() } catch (_: Exception) {}
+            imageFile.delete()
         }
     }
 
     private suspend fun sendTextMessage(prompt: String, eng: Engine): String {
-        val conv = eng.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.2)))
+        val conv = eng.createConversation(ConversationConfig())
         return try {
-            suspendCancellableCoroutine { cont ->
-                val sb = StringBuilder()
-                conv.sendMessageAsync(
-                    Contents.of(Content.Text(prompt)),
-                    object : MessageCallback {
-                        override fun onMessage(msg: com.google.ai.edge.litertlm.Message) { sb.append(msg.toString()) }
-                        override fun onDone() { cont.resume(sb.toString()) }
-                        override fun onError(t: Throwable) { cont.resumeWithException(t) }
-                    },
-                    emptyMap(),
-                )
-                cont.invokeOnCancellation { conv.cancelProcess() }
+            val sb = StringBuilder()
+            conv.sendMessageAsync(prompt).collect { msg ->
+                sb.append(msg.extractText())
             }
+            sb.toString()
         } finally {
             try { conv.close() } catch (_: Exception) {}
         }
@@ -222,7 +212,7 @@ Action type rules:
     private fun configureNativeRuntime(nativeLibDir: String) {
         if (nativeLibsConfigured) return
         Os.setenv("LD_LIBRARY_PATH", nativeLibDir, true)
-        Os.setenv("ADSP_LIBRARY_PATH", "$nativeLibDir;/system/lib/rfsa/adsp;/vendor/lib/rfsa/adsp;/dsp", true)
+        Os.setenv("ADSP_LIBRARY_PATH", nativeLibDir, true)
         nativeLibsConfigured = true
     }
 
