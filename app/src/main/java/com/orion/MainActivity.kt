@@ -39,9 +39,10 @@ class MainActivity : AppCompatActivity() {
             val pending = pendingComparisonGoal
             if (pending != null) {
                 pendingComparisonGoal = null
-                val installedApps = AppRegistry.installedFor(this, pending.toCategory())
+                val category = pending.toCategory()
+                val installedApps = AppRegistry.installedFor(this, category)
                 if (installedApps.isEmpty()) {
-                    binding.textStatus.text = "No ${pending.toCategory().name.lowercase().replace('_', ' ')} apps installed"
+                    binding.textStatus.text = "No ${category.name.lowercase().replace('_', ' ')} apps installed"
                     binding.btnStart.isEnabled = true
                     return@registerForActivityResult
                 }
@@ -336,6 +337,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
+        ScreenCaptureService.onBookingChosen = null
         ScreenCaptureService.activeEngine?.cleanup()
         ScreenCaptureService.activeEngine = null
         liteRTLMManager.cleanup()
