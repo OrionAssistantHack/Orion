@@ -52,12 +52,16 @@ object OrionPipOverlay {
     }
 
     fun dismiss() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { dismiss() }
+            return
+        }
         val view = pillView ?: return
         try {
             val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm.removeView(view)
-        } catch (e: Exception) {
-            Log.w(TAG, "dismiss: ${e.message}")
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "dismiss: view not attached — ${e.message}")
         }
         pillView = null
         isShowing = false
@@ -105,6 +109,7 @@ object OrionPipOverlay {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     params.x = startParamX + (event.rawX - startX).toInt()
+                    // Gravity.BOTTOM: params.y is offset from bottom edge, so invert Y delta
                     params.y = startParamY - (event.rawY - startY).toInt()
                     wm.updateViewLayout(view, params)
                     true
