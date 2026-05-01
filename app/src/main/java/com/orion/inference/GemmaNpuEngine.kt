@@ -74,7 +74,9 @@ class GemmaNpuEngine private constructor(private val context: Context) : Inferen
         screenHeight: Int,
         appPackage: String,
         retryContext: String,
-        previousAction: String
+        previousAction: String,
+        keyboardVisible: Boolean,
+        focusedInputIndex: Int
     ): Pair<PerceptionResult, Plan> {
         val eng = engine ?: return LiteRTLMManager.fallbackResult("engine_not_ready")
 
@@ -88,7 +90,7 @@ class GemmaNpuEngine private constructor(private val context: Context) : Inferen
 
         val conv = eng.createConversation(ConversationConfig())
         return try {
-            val prompt = buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
+            val prompt = buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex)
             val contents = Contents.of(
                 Content.ImageFile(imageFile.absolutePath),
                 Content.Text(prompt)
