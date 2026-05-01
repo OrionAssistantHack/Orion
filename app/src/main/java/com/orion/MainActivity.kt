@@ -30,18 +30,51 @@ class MainActivity : AppCompatActivity() {
 
     private var selectedPackage = "com.ubercab"
     private var selectedMode = "gpu"
+    private var pendingComparisonGoal: com.orion.core.ParsedGoal? = null
 
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            val goal = binding.editGoal.text.toString().trim()
-            ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
-            val launchIntent = packageManager.getLaunchIntentForPackage(selectedPackage)
-                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (launchIntent != null) startActivity(launchIntent)
-            binding.btnStop.isEnabled = true
-            binding.textStatus.text = getString(R.string.status_running)
+            val pending = pendingComparisonGoal
+            if (pending != null) {
+                pendingComparisonGoal = null
+                val installedApps = AppRegistry.installedFor(this, pending.toCategory())
+                if (installedApps.isEmpty()) {
+                    binding.textStatus.text = "No ${pending.toCategory().name.lowercase().replace('_', ' ')} apps installed"
+                    binding.btnStart.isEnabled = true
+                    return@registerForActivityResult
+                }
+                val session = com.orion.core.ComparisonSession(pending, installedApps)
+                ScreenCaptureService.startComparison(
+                    context = this,
+                    resultCode = result.resultCode,
+                    data = result.data!!,
+                    session = session,
+                ) { chosenApp ->
+                    runOnUiThread {
+                        selectedPackage = chosenApp.packageName
+                        binding.editGoal.setText("Complete the booking")
+                        binding.textStatus.text = "Booking with ${chosenApp.displayName}…"
+                        requestScreenCapture()
+                    }
+                }
+                packageManager.getLaunchIntentForPackage(session.currentApp?.packageName ?: "")
+                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ?.let { startActivity(it) }
+                binding.btnStop.isEnabled = true
+                binding.textStatus.text = "Comparing across ${installedApps.size} apps…"
+            } else {
+                // Single-app mode — existing logic unchanged
+                val goal = binding.editGoal.text.toString().trim()
+                ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
+                packageManager.getLaunchIntentForPackage(selectedPackage)
+                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ?.let { startActivity(it) }
+                binding.btnStop.isEnabled = true
+                binding.textStatus.text = getString(R.string.status_running)
+            }
+            binding.btnStart.isEnabled = false
         } else {
             binding.btnStart.isEnabled = true
             binding.textStatus.text = "Screen capture permission denied"
@@ -145,6 +178,20 @@ class MainActivity : AppCompatActivity() {
             binding.textStatus.text = "Please enter a goal first"
             return
         }
+
+        val parsed = parseGoal(goal)
+        if (parsed != null) {
+            if (!Settings.canDrawOverlays(this)) {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                binding.textStatus.text = "Grant 'Draw over other apps', then tap Use Assistant again"
+                return
+            }
+            pendingComparisonGoal = parsed
+            requestScreenCaptureForComparison()
+            return
+        }
+
+        // Single-app mode — existing flow unchanged
         if (packageManager.getLaunchIntentForPackage(selectedPackage) == null) {
             binding.textStatus.text = "App not found: $selectedPackage"
             return
@@ -158,6 +205,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestScreenCaptureForComparison() {
+        binding.textStatus.text = "Requesting screen capture…"
+        binding.btnStart.isEnabled = false
+        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+        screenCaptureLauncher.launch(mgr.createScreenCaptureIntent())
+        // screenCaptureLauncher callback branches on pendingComparisonGoal
+    }
+
     private fun requestScreenCapture() {
         binding.textStatus.text = "Requesting screen capture permission…"
         binding.btnStart.isEnabled = false
@@ -166,6 +221,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onStopAssistant() {
+        ScreenCaptureService.comparisonSession = null
+        com.orion.ui.ComparisonOverlay.dismiss()
+        pendingComparisonGoal = null
         ScreenCaptureService.stopCapture(this)
         binding.btnStart.isEnabled = true
         binding.btnStop.isEnabled = false
