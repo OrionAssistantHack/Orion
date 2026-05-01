@@ -1,11 +1,10 @@
 package com.orion.automation
 
-import android.view.accessibility.AccessibilityNodeInfo
+import android.graphics.Bitmap
 import com.orion.core.ExecutionResult
 
 interface AutomationExecutor {
-    fun tapNode(node: AccessibilityNodeInfo): ExecutionResult
+    fun tapNode(nodeText: String): ExecutionResult
     fun dispatchTap(x: Float, y: Float): ExecutionResult
-    fun typeText(node: AccessibilityNodeInfo, text: String): ExecutionResult
-    fun isScreenSecure(): Boolean
+    fun isScreenSecure(bitmap: Bitmap): Boolean
 }
