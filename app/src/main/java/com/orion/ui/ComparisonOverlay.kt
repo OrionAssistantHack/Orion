@@ -20,6 +20,7 @@ import com.orion.R
 import com.orion.core.ComparisonSession
 import com.orion.core.KnownApp
 import com.orion.core.ParsedGoal
+import com.orion.core.Preference
 
 private const val TAG = "Orion.ComparisonOverlay"
 private val mainHandler = Handler(Looper.getMainLooper())
@@ -130,19 +131,28 @@ object ComparisonOverlay {
 
         val cheapest = session.cheapestApp
         val fastest = session.fastestApp
+        val preference = when (session.parsedGoal) {
+            is ParsedGoal.RideRequest -> session.parsedGoal.preference
+            is ParsedGoal.FoodOrder -> session.parsedGoal.preference
+        }
+        val preferredApp = when (preference) {
+            Preference.FASTEST -> fastest ?: cheapest
+            else -> cheapest
+        }
 
         // Result rows — each row is tappable to book that app
         for ((pkg, fare) in session.collectedFares) {
             val app = session.apps.firstOrNull { it.packageName == pkg } ?: continue
             val isCheapest = app == cheapest
             val isFastest = app == fastest && fastest != cheapest
+            val isPreferred = app == preferredApp
 
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = GradientDrawable().apply {
-                    setColor(if (isCheapest) 0xFFF0FDF4.toInt() else 0xFFF9FAFB.toInt())
-                    if (isCheapest) setStroke((1 * dp).toInt(), 0xFFBBF7D0.toInt())
+                    setColor(if (isPreferred) 0xFFF0FDF4.toInt() else 0xFFF9FAFB.toInt())
+                    if (isPreferred) setStroke((1 * dp).toInt(), 0xFFBBF7D0.toInt())
                     cornerRadius = 10 * dp
                 }
                 val p = (12 * dp).toInt()
@@ -166,10 +176,19 @@ object ComparisonOverlay {
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
             })
-            if (isCheapest || isFastest) {
+            // Always show cheapest/fastest badges; preferred one shown in bold color
+            if (isCheapest) {
                 leftCol.addView(TextView(context).apply {
-                    text = if (isCheapest) "✓ CHEAPEST" else "⚡ FASTEST"
-                    setTextColor(if (isCheapest) 0xFF16A34A.toInt() else 0xFF2563EB.toInt())
+                    text = "✓ CHEAPEST"
+                    setTextColor(if (preference != Preference.FASTEST) 0xFF16A34A.toInt() else 0xFF6B7280.toInt())
+                    textSize = 11f
+                    setTypeface(null, Typeface.BOLD)
+                })
+            }
+            if (isFastest) {
+                leftCol.addView(TextView(context).apply {
+                    text = "⚡ FASTEST"
+                    setTextColor(if (preference == Preference.FASTEST) 0xFF2563EB.toInt() else 0xFF6B7280.toInt())
                     textSize = 11f
                     setTypeface(null, Typeface.BOLD)
                 })
@@ -197,7 +216,7 @@ object ComparisonOverlay {
             }
             rightCol.addView(TextView(context).apply {
                 text = "Book →"
-                setTextColor(if (isCheapest) 0xFF16A34A.toInt() else 0xFFF97316.toInt())
+                setTextColor(if (isPreferred) 0xFF16A34A.toInt() else 0xFFF97316.toInt())
                 textSize = 12f
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.END
@@ -206,12 +225,17 @@ object ComparisonOverlay {
             root.addView(row)
         }
 
-        // Primary CTA — book the cheapest (or first available)
-        val bookTarget = cheapest
+        // Primary CTA — book the preferred app (fastest or cheapest based on user intent)
+        val bookTarget = preferredApp
             ?: session.apps.firstOrNull { session.collectedFares.containsKey(it.packageName) }
         if (bookTarget != null) {
+            val ctaLabel = when (preference) {
+                Preference.FASTEST -> "Book fastest — ${bookTarget.displayName} →"
+                Preference.CHEAPEST -> "Book cheapest — ${bookTarget.displayName} →"
+                Preference.NONE -> "Book with ${bookTarget.displayName} →"
+            }
             root.addView(Button(context).apply {
-                text = "Book with ${bookTarget.displayName} →"
+                text = ctaLabel
                 setTextColor(0xFFFFFFFF.toInt())
                 setBackgroundResource(R.drawable.bg_gradient_brand)
                 setOnClickListener { dismiss(); onBook(bookTarget) }

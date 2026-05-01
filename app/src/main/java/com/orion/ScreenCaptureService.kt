@@ -42,16 +42,22 @@ import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
 
 private fun buildComparisonGoal(goal: com.orion.core.ParsedGoal): String = when (goal) {
-    is com.orion.core.ParsedGoal.RideRequest ->
+    is com.orion.core.ParsedGoal.RideRequest -> {
+        val stopCondition = if (goal.preference == com.orion.core.Preference.FASTEST)
+            "prices and ETAs" else "prices"
         "Navigate to the fare estimate screen for destination: ${goal.destination}. " +
         "If a promotional overlay or bottom sheet appears (e.g. 'Pay with Bilt points', 'Pay with points', rewards offers), tap its X or Close button to dismiss it first. " +
-        "STOP at the fare estimate screen once you can see ride options with prices — do NOT tap Book, Request, Confirm, or any booking button."
-    is com.orion.core.ParsedGoal.FoodOrder ->
+        "STOP at the fare estimate screen once you can see ride options with $stopCondition — do NOT tap Book, Request, Confirm, or any booking button."
+    }
+    is com.orion.core.ParsedGoal.FoodOrder -> {
+        val stopCondition = if (goal.preference == com.orion.core.Preference.FASTEST)
+            "prices and delivery times" else "prices"
         "Search for restaurant '${goal.restaurant}'" +
         (goal.item?.let { " and find item '$it'" } ?: "") +
         ". Navigate to the order summary page. " +
         "If a promotional overlay appears, dismiss it first. " +
-        "STOP before placing the order — do NOT tap Place Order, Checkout, or any submit button."
+        "STOP before placing the order — do NOT tap Place Order, Checkout, or any submit button. Ensure $stopCondition are visible."
+    }
 }
 
 class ScreenCaptureService : Service() {

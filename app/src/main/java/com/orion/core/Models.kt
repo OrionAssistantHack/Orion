@@ -36,6 +36,8 @@ data class Plan(val summaryForUser: String, val actions: List<PlanAction>)
 
 enum class AppCategory { RIDES, FOOD_DELIVERY }
 
+enum class Preference { NONE, CHEAPEST, FASTEST }
+
 data class KnownApp(
     val packageName: String,
     val displayName: String,
@@ -57,12 +59,14 @@ sealed class ParsedGoal {
     data class RideRequest(
         val destination: String,
         override val rawGoal: String,
+        val preference: Preference = Preference.NONE,
     ) : ParsedGoal()
 
     data class FoodOrder(
         val restaurant: String,
         val item: String?,
         override val rawGoal: String,
+        val preference: Preference = Preference.NONE,
     ) : ParsedGoal()
 }
 
