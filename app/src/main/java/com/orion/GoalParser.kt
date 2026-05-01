@@ -3,10 +3,10 @@ package com.orion
 import com.orion.core.AppCategory
 import com.orion.core.ParsedGoal
 
-// Ride: "book/get/order/find/call/hail/request [me/us] [a] cab/ride/taxi/lyft/uber/car/vehicle to X"
+// Ride: "book/get/order/find/call/hail/request [me/us] [a] [adjectives] cab/ride/taxi/car/vehicle to X"
 private val RIDE_PATTERN = Regex(
     """(?:book|get|order|find|call|hail|request)(?:\s+(?:me|us))?\s+(?:an?\s+)?""" +
-    """(?:\w+\s+)*(?:cab|ride|taxi|lyft|uber|car|vehicle|transport)\s+""" +
+    """(?:\w+\s+)*(?:cab|ride|taxi|car|vehicle|transport)\s+""" +
     """(?:to|toward|towards|going to|headed to|heading to)\s+(.+)""",
     RegexOption.IGNORE_CASE
 )
