@@ -2,12 +2,24 @@
 <resources>
     <string name="app_name">Orion</string>
     <string name="accessibility_service_description">Orion reads the screen to complete tasks in other apps on your behalf.</string>
-    <string name="hint_goal">What do you want to do?</string>
+    <string name="hint_goal">Or describe your task…</string>
+    <string name="status_loading">⏳ Starting up…</string>
+    <string name="status_ready">● Ready</string>
+    <string name="status_running">◉ Working…</string>
+    <string name="status_stopped">● Ready</string>
+    <string name="onboarding_step1_title">Allow screen reading</string>
+    <string name="onboarding_step1_body">Orion reads what\'s on your screen to tap buttons and fill in forms on your behalf. Your data never leaves your phone.</string>
+    <string name="onboarding_step1_cta">Open Accessibility Settings</string>
+    <string name="onboarding_step1_hint">Tap \'Orion\' then turn it on</string>
+    <string name="onboarding_step2_title">Allow screen capture</string>
+    <string name="onboarding_step2_body">Orion takes screenshots to understand what\'s on screen. Images are processed on-device by your phone\'s AI chip — never uploaded.</string>
+    <string name="onboarding_step2_cta">Got it →</string>
+    <string name="onboarding_step2_hint">You\'ll be asked each time you start Orion</string>
+    <string name="onboarding_step3_title">Allow results overlay</string>
+    <string name="onboarding_step3_body">When Orion compares prices across apps, it shows you the results in a floating panel so you can pick the best deal.</string>
+    <string name="onboarding_step3_cta">Allow Overlay</string>
+    <string name="onboarding_step3_hint">Takes you to Display settings</string>
+    <string name="label_target_app">Target app: </string>
     <string name="btn_start">Use Assistant</string>
     <string name="btn_stop">Stop</string>
-    <string name="status_loading">Loading model…</string>
-    <string name="status_ready">Ready</string>
-    <string name="status_running">Agent running…</string>
-    <string name="status_stopped">Stopped</string>
-    <string name="label_target_app">Target app: </string>
 </resources>

@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#2563EB</color>
-    <color name="brand_secondary">#10B981</color>
-    <color name="bg_app">#F3F4F6</color>
+    <color name="brand_gradient_start">#F97316</color>
+    <color name="brand_gradient_end">#EF4444</color>
+    <color name="bg_warm_start">#FFF7ED</color>
+    <color name="bg_warm_end">#FEF3C7</color>
     <color name="bg_card">#FFFFFF</color>
     <color name="text_primary">#1F2937</color>
     <color name="text_secondary">#6B7280</color>
-    <color name="status_pill_bg">#E0F2F1</color>
+    <color name="status_ready_bg">#DCFCE7</color>
+    <color name="status_ready_text">#16A34A</color>
+    <color name="status_loading_bg">#FEF3C7</color>
+    <color name="status_loading_text">#D97706</color>
+    <color name="status_running_bg">#FEE2E2</color>
+    <color name="status_running_text">#DC2626</color>
 </resources>
