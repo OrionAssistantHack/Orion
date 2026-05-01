@@ -1,35 +1,50 @@
 package com.orion
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Log
+import android.view.View
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.orion.databinding.ActivityMainBinding
-import com.orion.inference.DualNpuPipeline
-import com.orion.inference.GemmaNpuEngine
 import com.orion.inference.LiteRTLMManager
+import com.orion.ui.ComparisonOverlay
+import com.orion.ui.OrionPipOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class PresetCard(
+    val emoji: String,
+    val title: String,
+    val subtitle: String,
+    val packageName: String?,
+    val goalTemplate: String,
+    val needsDestination: Boolean = false,
+)
+
 class MainActivity : AppCompatActivity() {
 
     private val TAG = "Orion.MainActivity"
-
     private lateinit var binding: ActivityMainBinding
     private lateinit var liteRTLMManager: LiteRTLMManager
 
+    var selectedCategory = "rides"
+        private set
     private var selectedPackage = "com.ubercab"
-    private var selectedMode = "gpu"
     private var pendingComparisonGoal: com.orion.core.ParsedGoal? = null
 
     private val screenCaptureLauncher = registerForActivityResult(
@@ -42,8 +57,8 @@ class MainActivity : AppCompatActivity() {
                 val category = pending.toCategory()
                 val installedApps = AppRegistry.installedFor(this, category)
                 if (installedApps.isEmpty()) {
-                    binding.textStatus.text = "No ${category.name.lowercase().replace('_', ' ')} apps installed"
-                    binding.btnStart.isEnabled = true
+                    showIdleState()
+                    setStatusPill("ready")
                     return@registerForActivityResult
                 }
                 val session = com.orion.core.ComparisonSession(pending, installedApps)
@@ -54,54 +69,43 @@ class MainActivity : AppCompatActivity() {
                     session = session,
                 ) { chosenApp ->
                     runOnUiThread {
+                        OrionPipOverlay.dismiss()
                         selectedPackage = chosenApp.packageName
                         binding.editGoal.setText("Complete the booking")
-                        binding.textStatus.text = "Booking with ${chosenApp.displayName}…"
                         requestScreenCapture()
                     }
                 }
                 packageManager.getLaunchIntentForPackage(session.currentApp?.packageName ?: "")
                     ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     ?.let { startActivity(it) }
-                binding.btnStop.isEnabled = true
-                binding.textStatus.text = "Comparing across ${installedApps.size} apps…"
+                OrionPipOverlay.show(this)
+                setStatusPill("running")
             } else {
-                // Single-app mode — existing logic unchanged
                 val goal = binding.editGoal.text.toString().trim()
                 ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
                 packageManager.getLaunchIntentForPackage(selectedPackage)
                     ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     ?.let { startActivity(it) }
-                binding.btnStop.isEnabled = true
-                binding.textStatus.text = getString(R.string.status_running)
+                OrionPipOverlay.show(this)
+                setStatusPill("running")
+                showRunningState(goal)
             }
-            binding.btnStart.isEnabled = false
         } else {
-            binding.btnStart.isEnabled = true
-            binding.textStatus.text = "Screen capture permission denied"
+            showIdleState()
+            setStatusPill("ready")
         }
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) requestScreenCapture()
-        else binding.textStatus.text = "Notification permission denied"
+        if (granted) requestScreenCapture() else setStatusPill("ready")
     }
-
-    private val appOptions =
-            listOf(
-                    Triple("Uber", "com.ubercab", "Uber"),
-                    Triple("Lyft", "me.lyft.android", "Lyft"),
-                    Triple("AI Gallery", "com.google.aiedge.gallery", "AI Gallery")
-            )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "onCreate")
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
         liteRTLMManager = LiteRTLMManager.getInstance(this)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -112,79 +116,160 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        setupAppSelector()
-        setupModeSelector()
-        setupButtons()
+        setupCategoryTabs()
+        buildPresetCards()
+        binding.btnSend.setOnClickListener { onSendGoal() }
+        binding.btnStop.setOnClickListener { onStopAssistant() }
         promptAccessibilityIfNeeded()
         initializeModel()
     }
 
-    private fun setupAppSelector() {
-        for ((label, pkg, _) in appOptions) {
-            val btn =
-                    Button(this).apply {
-                        text = label
-                        setOnClickListener {
-                            selectedPackage = pkg
-                            binding.textTargetApp.text =
-                                    getString(R.string.label_target_app) + label
-                        }
-                    }
-            binding.layoutAppSelector.addView(btn)
-        }
-    }
-
-    private fun setupModeSelector() {
-        val modes = listOf(
-            Triple("Gemma NPU", "npu_gemma", true),
-            Triple("Gemma GPU", "gpu", false),
-            Triple("NPU Pipeline", "npu_pipeline", false)
-        )
-        for ((label, mode, _) in modes) {
+    private fun setupCategoryTabs() {
+        val tabs = listOf("rides" to "Rides", "food" to "Food")
+        binding.layoutCategoryTabs.removeAllViews()
+        for ((key, label) in tabs) {
             val btn = Button(this).apply {
                 text = label
-                setOnClickListener {
-                    if (selectedMode == mode) return@setOnClickListener
-                    selectedMode = mode
-                    binding.textInferenceMode.text = "Inference mode: $label"
-                    switchInferenceMode()
-                }
+                textSize = 12f
+                isAllCaps = false
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = (8 * resources.displayMetrics.density).toInt() }
+                setOnClickListener { selectCategory(key) }
             }
-            binding.layoutModeSelector.addView(btn)
+            binding.layoutCategoryTabs.addView(btn)
+            updateTabStyle(btn, key == selectedCategory)
         }
     }
 
-    private fun switchInferenceMode() {
-        binding.btnStart.isEnabled = false
-        binding.textStatus.text = "Unloading current model…"
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                ScreenCaptureService.activeEngine?.cleanup()
-                ScreenCaptureService.activeEngine = null
-                System.gc()
-                kotlinx.coroutines.delay(500)
-            }
-            initializeModel()
+    private fun selectCategory(key: String) {
+        selectedCategory = key
+        for (i in 0 until binding.layoutCategoryTabs.childCount) {
+            val btn = binding.layoutCategoryTabs.getChildAt(i) as? Button ?: continue
+            val tabKey = if (btn.text == "Rides") "rides" else "food"
+            updateTabStyle(btn, tabKey == key)
+        }
+        buildPresetCards()
+    }
+
+    private fun updateTabStyle(btn: Button, active: Boolean) {
+        if (active) {
+            btn.setBackgroundResource(R.drawable.bg_gradient_brand)
+            btn.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+        } else {
+            btn.setBackgroundResource(R.drawable.bg_tab_inactive)
+            btn.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
     }
 
-    private fun setupButtons() {
-        binding.btnStart.setOnClickListener { onStartAssistant() }
-        binding.btnStop.setOnClickListener { onStopAssistant() }
+    fun presetCardsFor(category: String): List<PresetCard> = when (category) {
+        "rides" -> listOf(
+            PresetCard("🚗", "Find cheapest ride", "Compares Uber, Lyft & Waymo",
+                packageName = null,
+                goalTemplate = "find cheapest ride to [destination]",
+                needsDestination = true),
+            PresetCard("🚕", "Book an Uber", "Open Uber and complete booking",
+                packageName = "com.ubercab",
+                goalTemplate = "Book a ride to [destination]",
+                needsDestination = true),
+            PresetCard("🟣", "Book a Lyft", "Open Lyft and complete booking",
+                packageName = "me.lyft.android",
+                goalTemplate = "Book a ride to [destination]",
+                needsDestination = true),
+        )
+        "food" -> listOf(
+            PresetCard("🍕", "Order on DoorDash", "Open DoorDash and complete order",
+                packageName = "com.dd.doordash",
+                goalTemplate = "Order food from DoorDash"),
+            PresetCard("🛵", "Order on Uber Eats", "Open Uber Eats and complete order",
+                packageName = "com.ubercab.eats",
+                goalTemplate = "Order food from Uber Eats"),
+            PresetCard("🥡", "Order on Grubhub", "Open Grubhub and complete order",
+                packageName = "com.grubhub.android",
+                goalTemplate = "Order food from Grubhub"),
+        )
+        else -> emptyList()
     }
 
-    private fun onStartAssistant() {
+    private fun buildPresetCards() {
+        binding.layoutCards.removeAllViews()
+        val dp = resources.displayMetrics.density
+        val cards = presetCardsFor(selectedCategory).filter { card ->
+            card.packageName == null || packageManager.getLaunchIntentForPackage(card.packageName) != null
+        }
+        for (card in cards) {
+            val cardView = MaterialCardView(this).apply {
+                radius = 12f * dp
+                cardElevation = 2f * dp
+                strokeWidth = dp.toInt()
+                strokeColor = ContextCompat.getColor(this@MainActivity, R.color.brand_gradient_start)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = (8 * dp).toInt() }
+                setOnClickListener { onCardTapped(card) }
+            }
+            val inner = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                val p = (16 * dp).toInt()
+                setPadding(p, p, p, p)
+            }
+            inner.addView(android.widget.TextView(this).apply {
+                text = "${card.emoji} ${card.title}"
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            })
+            inner.addView(android.widget.TextView(this).apply {
+                text = card.subtitle
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            })
+            cardView.addView(inner)
+            binding.layoutCards.addView(cardView)
+        }
+    }
+
+    private fun onCardTapped(card: PresetCard) {
+        if (card.needsDestination) {
+            promptDestination(card)
+        } else {
+            selectedPackage = card.packageName ?: return
+            binding.editGoal.setText(card.goalTemplate)
+            onSendGoal()
+        }
+    }
+
+    private fun promptDestination(card: PresetCard) {
+        val editText = EditText(this).apply {
+            hint = "e.g. SFO Airport"
+            val p = (16 * resources.displayMetrics.density).toInt()
+            setPadding(p, p, p, p)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Where to?")
+            .setView(editText)
+            .setPositiveButton("Go") { _, _ ->
+                val dest = editText.text.toString().trim()
+                if (dest.isEmpty()) return@setPositiveButton
+                val goal = card.goalTemplate.replace("[destination]", dest)
+                if (card.packageName != null) selectedPackage = card.packageName
+                binding.editGoal.setText(goal)
+                onSendGoal()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun onSendGoal() {
         val goal = binding.editGoal.text.toString().trim()
-        if (goal.isEmpty()) {
-            binding.textStatus.text = "Please enter a goal first"
-            return
-        }
+        if (goal.isEmpty()) return
 
         val parsed = parseGoal(goal)
         if (parsed != null) {
             if (!Settings.canDrawOverlays(this)) {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
-                binding.textStatus.text = "Grant 'Draw over other apps', then tap Use Assistant again"
                 return
             }
             pendingComparisonGoal = parsed
@@ -192,11 +277,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Single-app mode — existing flow unchanged
-        if (packageManager.getLaunchIntentForPackage(selectedPackage) == null) {
-            binding.textStatus.text = "App not found: $selectedPackage"
-            return
-        }
+        if (packageManager.getLaunchIntentForPackage(selectedPackage) == null) return
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
@@ -206,122 +288,93 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestScreenCaptureForComparison() {
-        binding.textStatus.text = "Requesting screen capture…"
-        binding.btnStart.isEnabled = false
-        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-        screenCaptureLauncher.launch(mgr.createScreenCaptureIntent())
-        // screenCaptureLauncher callback branches on pendingComparisonGoal
+    fun setStatusPill(state: String) {
+        val (text, bgRes, colorRes) = when (state) {
+            "ready" -> Triple(
+                getString(R.string.status_ready),
+                R.drawable.bg_status_pill_ready,
+                R.color.status_ready_text)
+            "running" -> Triple(
+                getString(R.string.status_running),
+                R.drawable.bg_status_pill_running,
+                R.color.status_running_text)
+            else -> Triple(
+                getString(R.string.status_loading),
+                R.drawable.bg_status_pill_loading,
+                R.color.status_loading_text)
+        }
+        binding.textStatusPill.text = text
+        binding.textStatusPill.setBackgroundResource(bgRes)
+        binding.textStatusPill.setTextColor(ContextCompat.getColor(this, colorRes))
     }
 
-    private fun requestScreenCapture() {
-        binding.textStatus.text = "Requesting screen capture permission…"
-        binding.btnStart.isEnabled = false
-        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        screenCaptureLauncher.launch(mgr.createScreenCaptureIntent())
+    private fun showRunningState(goal: String) {
+        binding.textGoalRecap.text = goal
+        binding.scrollCards.visibility = View.GONE
+        binding.scrollRunning.visibility = View.VISIBLE
+        for (i in 0 until binding.layoutCategoryTabs.childCount) {
+            binding.layoutCategoryTabs.getChildAt(i).isEnabled = false
+        }
+    }
+
+    private fun showIdleState() {
+        binding.scrollCards.visibility = View.VISIBLE
+        binding.scrollRunning.visibility = View.GONE
+        for (i in 0 until binding.layoutCategoryTabs.childCount) {
+            binding.layoutCategoryTabs.getChildAt(i).isEnabled = true
+        }
     }
 
     private fun onStopAssistant() {
         ScreenCaptureService.comparisonSession = null
-        com.orion.ui.ComparisonOverlay.dismiss()
+        ComparisonOverlay.dismiss()
+        OrionPipOverlay.dismiss()
         pendingComparisonGoal = null
         ScreenCaptureService.stopCapture(this)
-        binding.btnStart.isEnabled = true
-        binding.btnStop.isEnabled = false
-        binding.textStatus.text = getString(R.string.status_stopped)
+        showIdleState()
+        setStatusPill("ready")
+    }
+
+    private fun requestScreenCaptureForComparison() {
+        setStatusPill("running")
+        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        screenCaptureLauncher.launch(mgr.createScreenCaptureIntent())
+    }
+
+    private fun requestScreenCapture() {
+        setStatusPill("running")
+        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        screenCaptureLauncher.launch(mgr.createScreenCaptureIntent())
     }
 
     private fun promptAccessibilityIfNeeded() {
-        val enabled =
-                Settings.Secure.getString(
-                        contentResolver,
-                        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                )
-                        ?: ""
+        val enabled = Settings.Secure.getString(
+            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: ""
         if (!enabled.contains("$packageName/${OrionAccessibilityService::class.java.name}")) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 
     private fun initializeModel() {
-        val modelPath = findModelPath() ?: run {
-            binding.textStatus.text = "Push model to ${getExternalFilesDir(null)?.absolutePath}"
-            return
-        }
-
-        // Reuse if already ready on the same mode
-        val existingEngine = ScreenCaptureService.activeEngine
-        val engineMatchesMode = when (selectedMode) {
-            "npu_gemma" -> existingEngine is GemmaNpuEngine
-            "npu_pipeline" -> existingEngine is DualNpuPipeline
-            else -> existingEngine is LiteRTLMManager
-        }
-        if (existingEngine != null && existingEngine.isReady() && engineMatchesMode) {
-            binding.textBackendStatus.text = existingEngine.getDescription()
-            binding.textStatus.text = getString(R.string.status_ready)
-            binding.btnStart.isEnabled = true
-            return
-        }
-
-        binding.textStatus.text = getString(R.string.status_loading)
+        val modelPath = findModelPath() ?: run { setStatusPill("loading"); return }
+        val existing = ScreenCaptureService.activeEngine
+        if (existing != null && existing.isReady()) { setStatusPill("ready"); return }
+        setStatusPill("loading")
         lifecycleScope.launch {
-            val startMs = System.currentTimeMillis()
             try {
-                when (selectedMode) {
-                    "npu_gemma" -> {
-                        val modelPath = findModelByName(GemmaNpuEngine.MODEL_FILENAME)
-                            ?: run { binding.textStatus.text = "Gemma NPU model not found"; return@launch }
-                        val engine = GemmaNpuEngine.getInstance(this@MainActivity)
-                        withContext(Dispatchers.IO) { engine.initialize(modelPath) }
-                        if (!engine.isReady()) {
-                            binding.textStatus.text = "Gemma NPU init failed — check logcat"
-                            return@launch
-                        }
-                        ScreenCaptureService.activeEngine = engine
-                    }
-                    "npu_pipeline" -> {
-                        val fastVlmPath = findModelByName(DualNpuPipeline.FASTVLM_MODEL)
-                        val gemmaNpuPath = findModelByName(DualNpuPipeline.GEMMA_NPU_MODEL)
-                        if (fastVlmPath == null || gemmaNpuPath == null) {
-                            binding.textStatus.text = "NPU models not found in /data/local/tmp"
-                            return@launch
-                        }
-                        val pipeline = DualNpuPipeline.getInstance(this@MainActivity)
-                        withContext(Dispatchers.IO) { pipeline.initialize(fastVlmPath, gemmaNpuPath) }
-                        if (!pipeline.isReady()) {
-                            binding.textStatus.text = "NPU pipeline init failed — check logcat"
-                            return@launch
-                        }
-                        ScreenCaptureService.activeEngine = pipeline
-                    }
-                    else -> { // "gpu"
-                        withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
-                        ScreenCaptureService.activeEngine = liteRTLMManager
-                    }
-                }
-                val engine = ScreenCaptureService.activeEngine ?: return@launch
-                val elapsed = System.currentTimeMillis() - startMs
-                Log.i(TAG, "${engine.getDescription()} ready in ${elapsed}ms")
-                binding.textBackendStatus.text = "${engine.getDescription()} — ${elapsed}ms"
-                binding.textStatus.text = getString(R.string.status_ready)
-                binding.btnStart.isEnabled = true
+                withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
+                ScreenCaptureService.activeEngine = liteRTLMManager
+                setStatusPill("ready")
                 ScreenCaptureService.triggerCaptureIfReady()
             } catch (e: Exception) {
-                binding.textStatus.text = "Load failed: ${e.message}"
+                setStatusPill("loading")
             }
         }
     }
 
-    private fun findModelByName(name: String): String? {
-        val dirs = listOfNotNull("/data/local/tmp", getExternalFilesDir(null)?.absolutePath)
-        return dirs.map { java.io.File(it, name) }.firstOrNull { it.exists() }?.absolutePath
-    }
-
     private fun findModelPath(): String? {
-        val searchDirs = listOfNotNull(
-            "/data/local/tmp",
-            getExternalFilesDir(null)?.absolutePath
-        )
+        val searchDirs = listOfNotNull("/data/local/tmp", getExternalFilesDir(null)?.absolutePath)
         val modelNames = listOf(
             "gemma-4-E4B-it.litertlm",
             "gemma-4-E2B-it.litertlm",
@@ -337,8 +390,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy")
         ScreenCaptureService.onBookingChosen = null
+        OrionPipOverlay.dismiss()
         ScreenCaptureService.activeEngine?.cleanup()
         ScreenCaptureService.activeEngine = null
         liteRTLMManager.cleanup()
