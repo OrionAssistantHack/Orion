@@ -82,6 +82,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
     @Volatile private var conversation: com.google.ai.edge.litertlm.Conversation? = null
     private var activeBackend: String = "None"
     @Volatile private var nativeLibsConfigured = false
+    @Volatile private var initGeneration = 0
     private var lastModelPath: String? = null
 
     suspend fun initialize(modelPath: String) = withContext(Dispatchers.IO) {
@@ -93,7 +94,8 @@ class LiteRTLMManager private constructor(private val context: Context) {
             BackendFactory("GPU") { Backend.GPU() },
             BackendFactory("CPU") { Backend.CPU() }
         )
-        initializeWithFallback(modelPath, backends, nativeLibDir)
+        val generation = initGeneration
+        initializeWithFallback(modelPath, backends, nativeLibDir, generation)
     }
 
     fun isReady(): Boolean = engine != null
@@ -101,6 +103,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
     fun getActiveBackend(): String = activeBackend
 
     fun cleanup() {
+        initGeneration++
         conversation?.close()
         conversation = null
         engine?.close()
@@ -190,7 +193,8 @@ class LiteRTLMManager private constructor(private val context: Context) {
                 BackendFactory("GPU") { Backend.GPU() },
                 BackendFactory("CPU") { Backend.CPU() }
             )
-            initializeWithFallback(lastModelPath ?: return@withContext false, gpuCpuBackends, nativeLibDir)
+            val gen = initGeneration
+            initializeWithFallback(lastModelPath ?: return@withContext false, gpuCpuBackends, nativeLibDir, gen)
             Log.i(TAG, "Fallback init succeeded on $activeBackend")
             true
         } catch (e: Exception) {
@@ -202,12 +206,23 @@ class LiteRTLMManager private constructor(private val context: Context) {
     private fun initializeWithFallback(
         modelPath: String,
         backends: List<BackendFactory>,
-        nativeLibDir: String
+        nativeLibDir: String,
+        generation: Int
     ) {
         var lastError: Exception? = null
         for (factory in backends) {
+            if (initGeneration != generation) {
+                Log.w(TAG, "Initialize aborted (generation mismatch) — cleanup was called")
+                return
+            }
             try {
                 initializeEngine(modelPath, factory, nativeLibDir)
+                if (initGeneration != generation) {
+                    Log.w(TAG, "Initialize aborted after engine creation — closing leaked engine")
+                    engine?.close()
+                    engine = null
+                    return
+                }
                 activeBackend = factory.name
                 Log.i(TAG, "Engine initialized on ${factory.name}")
                 return
@@ -216,7 +231,9 @@ class LiteRTLMManager private constructor(private val context: Context) {
                 lastError = e
             }
         }
-        throw lastError ?: IllegalStateException("All backends failed")
+        if (initGeneration == generation) {
+            throw lastError ?: IllegalStateException("All backends failed")
+        }
     }
 
     private fun initializeEngine(modelPath: String, factory: BackendFactory, nativeLibDir: String) {
