@@ -1,16 +1,22 @@
 package com.orion.ui
 
 import android.content.Context
+import android.graphics.Outline
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
+import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.orion.R
 import com.orion.core.ComparisonSession
 import com.orion.core.KnownApp
 import com.orion.core.ParsedGoal
@@ -20,9 +26,8 @@ private val mainHandler = Handler(Looper.getMainLooper())
 
 object ComparisonOverlay {
 
-    private var overlayView: android.view.View? = null
+    private var overlayView: View? = null
 
-    // Call from any thread. onBook receives the KnownApp the user chose.
     fun show(context: Context, session: ComparisonSession, onBook: (KnownApp) -> Unit) {
         if (!Settings.canDrawOverlays(context)) {
             Log.e(TAG, "SYSTEM_ALERT_WINDOW not granted — cannot show overlay")
@@ -51,7 +56,7 @@ object ComparisonOverlay {
         try {
             val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm.removeView(view)
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             Log.w(TAG, "dismiss: ${e.message}")
         }
         overlayView = null
@@ -61,65 +66,160 @@ object ComparisonOverlay {
         context: Context,
         session: ComparisonSession,
         onBook: (KnownApp) -> Unit,
-    ): android.view.View {
+    ): View {
+        val dp = context.resources.displayMetrics.density
+
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xF2000000.toInt())
-            setPadding(32, 24, 32, 48)
+            setBackgroundColor(0xFFFFFFFF.toInt())
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height + (24 * dp).toInt(), 24 * dp)
+                }
+            }
+            clipToOutline = true
+            val h = (20 * dp).toInt()
+            setPadding(h, (20 * dp).toInt(), h, (48 * dp).toInt())
         }
 
+        // Drag handle
+        root.addView(View(context).apply {
+            layoutParams = LinearLayout.LayoutParams((36 * dp).toInt(), (4 * dp).toInt()).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = (16 * dp).toInt()
+            }
+            background = GradientDrawable().apply {
+                setColor(0xFFE5E7EB.toInt())
+                cornerRadius = 2 * dp
+            }
+        })
+
+        // Title
         val titleText = when (val g = session.parsedGoal) {
             is ParsedGoal.RideRequest -> "Fares to \"${g.destination}\""
             is ParsedGoal.FoodOrder ->
-                "Prices from \"${g.restaurant}\"${g.item?.let { " for ${it}" } ?: ""}"
+                "Prices from \"${g.restaurant}\"${g.item?.let { " for $it" } ?: ""}"
         }
         root.addView(TextView(context).apply {
             text = titleText
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 16f
-            setPadding(0, 0, 0, 16)
+            setTextColor(0xFF1F2937.toInt())
+            textSize = 17f
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (4 * dp).toInt() }
+        })
+
+        // Subtitle
+        root.addView(TextView(context).apply {
+            text = "Orion compared ${session.collectedFares.size} apps for you"
+            setTextColor(0xFF6B7280.toInt())
+            textSize = 13f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (16 * dp).toInt() }
         })
 
         val cheapest = session.cheapestApp
         val fastest = session.fastestApp
 
+        // Result rows
         for ((pkg, fare) in session.collectedFares) {
             val app = session.apps.firstOrNull { it.packageName == pkg } ?: continue
-            val badges = buildList {
-                if (app == cheapest) add("CHEAPEST")
-                if (app == fastest && fastest != cheapest) add("FASTEST")
-            }.joinToString(" · ")
-            val badgeSuffix = if (badges.isNotEmpty()) "  [$badges]" else ""
-            val etaText = fare.eta?.let { " · ${it}min" } ?: ""
+            val isCheapest = app == cheapest
+            val isFastest = app == fastest && fastest != cheapest
 
-            root.addView(TextView(context).apply {
-                text = "${app.displayName}: ${fare.price}$etaText$badgeSuffix"
-                setTextColor(if (app == cheapest) 0xFF7CFC00.toInt() else 0xFFCCCCCC.toInt())
-                textSize = 15f
-                setPadding(0, 6, 0, 6)
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(if (isCheapest) 0xFFF0FDF4.toInt() else 0xFFF9FAFB.toInt())
+                    if (isCheapest) setStroke((1 * dp).toInt(), 0xFFBBF7D0.toInt())
+                    cornerRadius = 10 * dp
+                }
+                val p = (12 * dp).toInt()
+                setPadding(p, p, p, p)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = (8 * dp).toInt() }
+            }
+
+            val leftCol = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            leftCol.addView(TextView(context).apply {
+                text = app.displayName
+                setTextColor(0xFF1F2937.toInt())
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
             })
+            if (isCheapest || isFastest) {
+                leftCol.addView(TextView(context).apply {
+                    text = if (isCheapest) "✓ CHEAPEST" else "⚡ FASTEST"
+                    setTextColor(if (isCheapest) 0xFF16A34A.toInt() else 0xFF2563EB.toInt())
+                    textSize = 11f
+                    setTypeface(null, Typeface.BOLD)
+                })
+            }
+            row.addView(leftCol)
+
+            val rightCol = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.END
+            }
+            rightCol.addView(TextView(context).apply {
+                text = fare.price
+                setTextColor(0xFF1F2937.toInt())
+                textSize = 16f
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.END
+            })
+            fare.eta?.let { eta ->
+                rightCol.addView(TextView(context).apply {
+                    text = "~$eta min"
+                    setTextColor(0xFF6B7280.toInt())
+                    textSize = 12f
+                    gravity = Gravity.END
+                })
+            }
+            row.addView(rightCol)
+            root.addView(row)
         }
 
+        // Book CTA
         val bookTarget = cheapest
             ?: session.apps.firstOrNull { session.collectedFares.containsKey(it.packageName) }
         if (bookTarget != null) {
             root.addView(Button(context).apply {
-                text = "Book with ${bookTarget.displayName}"
+                text = "Book with ${bookTarget.displayName} →"
+                setTextColor(0xFFFFFFFF.toInt())
+                setBackgroundResource(R.drawable.bg_gradient_brand)
                 setOnClickListener { dismiss(); onBook(bookTarget) }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = 16 }
+                ).apply {
+                    topMargin = (16 * dp).toInt()
+                    bottomMargin = (8 * dp).toInt()
+                }
             })
         }
 
-        root.addView(Button(context).apply {
+        // Dismiss link
+        root.addView(TextView(context).apply {
             text = "Dismiss"
-            setOnClickListener { dismiss() }
+            setTextColor(0xFF6B7280.toInt())
+            textSize = 13f
+            gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 8 }
+            )
+            setOnClickListener { dismiss() }
         })
 
         return root
