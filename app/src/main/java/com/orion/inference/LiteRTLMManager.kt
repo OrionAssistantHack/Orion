@@ -28,6 +28,8 @@ import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+private const val TAG = "Orion.LiteRTLMManager"
+
 private fun buildPrompt(
     goal: String,
     nodes: List<Pair<String, Rect>>,
@@ -251,8 +253,6 @@ class LiteRTLMManager private constructor(private val context: Context) {
     }
 
     companion object {
-        private const val TAG = "OrionLiteRTLMManager"
-
         @Volatile private var instance: LiteRTLMManager? = null
 
         fun getInstance(context: Context): LiteRTLMManager =
@@ -306,7 +306,7 @@ private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
         }
         perception to Plan(summary, actions)
     } catch (e: JSONException) {
-        Log.w("OrionLiteRTLMManager", "Failed to parse response JSON: $json")
+        Log.w(TAG, "Failed to parse response JSON: $json")
         PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, raw) to Plan(raw.take(120), emptyList())
     }
 }

@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = "OrionMainActivity"
+    private val TAG = "Orion.MainActivity"
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var liteRTLMManager: LiteRTLMManager

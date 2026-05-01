@@ -8,7 +8,7 @@ import com.orion.databinding.ActivityFlagSecureBinding
 
 class FlagSecureActivity : AppCompatActivity() {
 
-    private val TAG = "OrionFlagSecure"
+    private val TAG = "Orion.FlagSecure"
 
     private lateinit var binding: ActivityFlagSecureBinding
 
