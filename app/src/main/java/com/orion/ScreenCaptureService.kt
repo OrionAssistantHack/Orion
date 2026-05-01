@@ -64,13 +64,13 @@ class ScreenCaptureService : Service() {
         const val EXTRA_GOAL = "goal"
         const val EXTRA_APP = "app"
 
-        var pendingGoal: String = ""
-        var targetApp: String = ""
-        var onPlanResult: ((String, com.orion.core.Plan) -> Unit)? = null
-        var activeEngine: InferenceEngine? = null
+        @Volatile var pendingGoal: String = ""
+        @Volatile var targetApp: String = ""
+        @Volatile var onPlanResult: ((String, com.orion.core.Plan) -> Unit)? = null
+        @Volatile var activeEngine: InferenceEngine? = null
 
         @Volatile var comparisonSession: com.orion.core.ComparisonSession? = null
-        var onBookingChosen: ((com.orion.core.KnownApp) -> Unit)? = null
+        @Volatile var onBookingChosen: ((com.orion.core.KnownApp) -> Unit)? = null
 
         fun startComparison(
             context: Context,
@@ -414,8 +414,32 @@ class ScreenCaptureService : Service() {
                                             resetGoalState()
                                             val intent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(nextApp.packageName)
                                                 ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            if (intent != null) this@ScreenCaptureService.startActivity(intent)
-                                            else Log.w(TAG, "Comparison: ${nextApp.packageName} not installed — skipping")
+                                            if (intent != null) {
+                                                this@ScreenCaptureService.startActivity(intent)
+                                            } else {
+                                                Log.w(TAG, "Comparison: ${nextApp.packageName} not installed — skipping")
+                                                session.advance()
+                                                if (session.isComplete) {
+                                                    val capturedSession2 = session
+                                                    comparisonSession = null
+                                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                        com.orion.ui.ComparisonOverlay.show(this@ScreenCaptureService, capturedSession2) { chosenApp ->
+                                                            onBookingChosen?.invoke(chosenApp)
+                                                        }
+                                                    }
+                                                } else {
+                                                    val skippedTo = session.currentApp
+                                                    if (skippedTo != null) {
+                                                        targetApp = skippedTo.packageName
+                                                        pendingGoal = buildComparisonGoal(session.parsedGoal)
+                                                        resetGoalState()
+                                                        val nextIntent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(skippedTo.packageName)
+                                                            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                        if (nextIntent != null) this@ScreenCaptureService.startActivity(nextIntent)
+                                                        else Log.w(TAG, "Comparison: ${skippedTo.packageName} also not installed — session may stall")
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     return@launch  // skip action execution — fare collected, session advanced
