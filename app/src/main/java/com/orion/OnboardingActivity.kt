@@ -77,6 +77,7 @@ class OnboardingActivity : AppCompatActivity() {
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return enabled.contains("$packageName/${OrionAccessibilityService::class.java.name}")
+        val target = "$packageName/${OrionAccessibilityService::class.java.name}"
+        return enabled.split(":").any { it.equals(target, ignoreCase = true) }
     }
 }

@@ -82,4 +82,40 @@ class OnboardingActivityTest {
             }
         }
     }
+
+    @Test
+    fun step3Cta_opensOverlaySettings() {
+        ActivityScenario.launch(OnboardingActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.onStep3CtaClick()
+                val started = shadowOf(activity).nextStartedActivity
+                assertEquals(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, started?.action)
+            }
+        }
+    }
+
+    @Test
+    fun advance_skipsStep3WhenOverlayAlreadyGranted() {
+        ActivityScenario.launch(OnboardingActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                // Shadow canDrawOverlays to return true
+                org.robolectric.shadows.ShadowSettings.setCanDrawOverlays(true)
+                activity.showStep(1)
+                activity.onStep2CtaClick() // calls advance(), next == 2, overlay granted → complete()
+                assertTrue(activity.isFinishing)
+                val started = shadowOf(activity).nextStartedActivity
+                assertEquals(MainActivity::class.java.name, started?.component?.className)
+            }
+        }
+    }
+
+    @Test
+    fun onResume_onStep2_completesWhenOverlayGranted() {
+        org.robolectric.shadows.ShadowSettings.setCanDrawOverlays(true)
+        val controller = Robolectric.buildActivity(OnboardingActivity::class.java).create().start()
+        val activity = controller.get()
+        activity.showStep(2)
+        controller.resume()
+        assertTrue(activity.isFinishing)
+    }
 }
