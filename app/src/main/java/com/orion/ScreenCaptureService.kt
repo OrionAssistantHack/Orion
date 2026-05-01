@@ -1,60 +1,71 @@
 package com.orion
 
-import android.app.*
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.util.Log
-import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
-import com.orion.automation.AccessibilityAutomationExecutor
-import com.orion.core.ExecutionResult
-import com.orion.core.Plan
 import com.orion.core.PlanAction
 import com.orion.inference.LiteRTLMManager
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileWriter
+import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenCaptureService : Service() {
 
-    private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
-    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private var executor: AccessibilityAutomationExecutor? = null
-    @Volatile private var currentGoal = ""
-    @Volatile private var isLoopRunning = false
-    @Volatile private var retryCount = 0
-    @Volatile private var lastError: String? = null
-
     companion object {
-        private const val TAG = "OrionScreenCapture"
-
-        private const val CHANNEL_ID = "OrionCapture"
+        private const val TAG = "Orion.ScreenCapture"
+        private const val CHANNEL_ID = "orion_capture"
         private const val NOTIFICATION_ID = 1
-        private const val MAX_RETRIES = 3
+
         const val EXTRA_RESULT_CODE = "result_code"
-        const val EXTRA_DATA = "data"
+        const val EXTRA_PROJECTION_DATA = "projection_data"
         const val EXTRA_GOAL = "goal"
         const val EXTRA_APP = "app"
 
+        var pendingGoal: String = ""
+        var targetApp: String = ""
+        var onPlanResult: ((String, com.orion.core.Plan) -> Unit)? = null
+
+        private const val MAX_TAP_RETRIES = 3
+
+        private var instance: WeakReference<ScreenCaptureService>? = null
+
         fun startCapture(context: Context, resultCode: Int, data: Intent, goal: String, app: String) {
+            pendingGoal = goal
+            targetApp = app
             context.startForegroundService(
                 Intent(context, ScreenCaptureService::class.java).apply {
                     putExtra(EXTRA_RESULT_CODE, resultCode)
-                    putExtra(EXTRA_DATA, data)
+                    putExtra(EXTRA_PROJECTION_DATA, data)
                     putExtra(EXTRA_GOAL, goal)
                     putExtra(EXTRA_APP, app)
                 }
@@ -65,205 +76,408 @@ class ScreenCaptureService : Service() {
             context.stopService(Intent(context, ScreenCaptureService::class.java))
         }
 
-        fun isFrameSecure(bitmap: Bitmap): Boolean {
-            val xs = listOf(0, bitmap.width / 4, bitmap.width / 2, 3 * bitmap.width / 4, bitmap.width - 1)
-            val ys = listOf(0, bitmap.height / 4, bitmap.height / 2, 3 * bitmap.height / 4, bitmap.height - 1)
-            var nearBlack = 0
-            for (x in xs) for (y in ys) {
-                val p = bitmap.getPixel(x, y)
-                if ((p shr 16 and 0xFF) < 30 && (p shr 8 and 0xFF) < 30 && (p and 0xFF) < 30) nearBlack++
+        fun triggerCapture() {
+            instance?.get()?.captureHandler?.post { instance?.get()?.captureFrame() }
+        }
+
+        fun resetGoalState() {
+            instance?.get()?.apply {
+                retryCount = 0
+                retryContext = ""
+                lastSuccessfulAction = ""
             }
-            return nearBlack >= 24
+        }
+
+        fun triggerCaptureIfReady() {
+            val svc = instance?.get() ?: return
+            val lm = LiteRTLMManager.getInstance(svc)
+            if (targetApp.isNotBlank()
+                && OrionAccessibilityService.lastAppPackage == targetApp
+                && lm.isReady()
+            ) {
+                Log.i(TAG, "triggerCaptureIfReady — firing for $targetApp")
+                svc.captureHandler.post { svc.captureFrame() }
+            }
         }
     }
+
+    @Volatile private var retryCount = 0
+    @Volatile private var retryContext = ""
+    @Volatile private var lastSuccessfulAction = ""
+
+    private var mediaProjection: MediaProjection? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var imageReader: ImageReader? = null
+    private lateinit var captureThread: HandlerThread
+    internal lateinit var captureHandler: Handler
+
+    private val inferenceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val inferenceActive = AtomicBoolean(false)
+    private var frameCounter = 0
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "Service created")
         createNotificationChannel()
+        captureThread = HandlerThread("CaptureThread").also { it.start() }
+        captureHandler = Handler(captureThread.looper)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
-            ?: Activity.RESULT_CANCELED
-        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent?.getParcelableExtra(EXTRA_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent?.getParcelableExtra(EXTRA_DATA)
-        }
-
-        if (resultCode != Activity.RESULT_OK || data == null) {
-            Log.e(TAG, "Missing projection token — stopping self")
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        // Must specify FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION on API 34+ for a service
-        // declared with foregroundServiceType="mediaProjection" in the manifest.
+        val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, buildNotification(),
+            startForeground(NOTIFICATION_ID, notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
-            startForeground(NOTIFICATION_ID, buildNotification())
+            startForeground(NOTIFICATION_ID, notification)
         }
 
-        currentGoal = intent?.getStringExtra(EXTRA_GOAL) ?: ""
-
-        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val mp = mgr.getMediaProjection(resultCode, data)
-        if (mp == null) {
-            Log.e(TAG, "getMediaProjection returned null — token invalid or already consumed")
-            stopSelf()
-            return START_NOT_STICKY
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
+        val projectionData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent?.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getParcelableExtra(EXTRA_PROJECTION_DATA)
         }
-        mediaProjection = mp
-        mp.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                Log.i(TAG, "MediaProjection stopped")
+
+        pendingGoal = intent?.getStringExtra(EXTRA_GOAL) ?: pendingGoal
+        targetApp = intent?.getStringExtra(EXTRA_APP) ?: targetApp
+
+        if (resultCode == Activity.RESULT_OK && projectionData != null) {
+            val mpManager = getSystemService(MediaProjectionManager::class.java)
+            val mp = mpManager.getMediaProjection(resultCode, projectionData)
+            if (mp == null) {
+                Log.e(TAG, "getMediaProjection returned null — token invalid or already consumed")
                 stopSelf()
+            } else {
+                mediaProjection = mp
+                mp.registerCallback(object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        Log.i(TAG, "MediaProjection stopped")
+                        stopSelf()
+                    }
+                }, captureHandler)
+                startCapture(mp)
+                instance = WeakReference(this)
             }
-        }, null)
-
-        setupImageReader()
-        Log.i(TAG, "Capture started, goal=$currentGoal")
-
-        OrionAccessibilityService.instance?.onCaptureRequested = { nodes ->
-            if (!isLoopRunning) runAgentCycle(nodes)
+        } else {
+            Log.e(TAG, "onStartCommand missing token — resultCode=$resultCode")
         }
 
         return START_NOT_STICKY
     }
 
-    private fun setupImageReader() {
-        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val bounds = wm.currentWindowMetrics.bounds
-        imageReader = ImageReader.newInstance(bounds.width(), bounds.height(), PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "OrionCapture", bounds.width(), bounds.height(),
-            resources.displayMetrics.densityDpi,
+    private fun startCapture(projection: MediaProjection) {
+        val metrics = resources.displayMetrics
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        val density = metrics.densityDpi
+
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        Log.i(TAG, "Creating VirtualDisplay: ${width}x${height}@${density}dpi")
+        virtualDisplay = projection.createVirtualDisplay(
+            "OrionCapture", width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface, null, null
+            imageReader!!.surface, null, null
         )
         if (virtualDisplay == null) {
-            Log.e(TAG, "createVirtualDisplay returned null")
+            Log.e(TAG, "createVirtualDisplay returned null — capture will not work")
+            return
         }
+        Log.i(TAG, "Capture started: ${width}x${height}@${density}dpi")
+        triggerCaptureIfReady()
     }
 
-    private fun captureFrameToFile(): String? {
-        val image = imageReader?.acquireLatestImage() ?: return null
-        return try {
+    internal fun captureFrame() {
+        if (inferenceActive.get()) {
+            imageReader?.acquireLatestImage()?.close()
+            Log.d(TAG, "Inference in flight — dropping frame")
+            return
+        }
+        frameCounter++
+        val frameNum = frameCounter
+        val image = imageReader?.acquireLatestImage() ?: return
+        try {
             val plane = image.planes[0]
-            val rowPadding = plane.rowStride - plane.pixelStride * image.width
-            val bmp = Bitmap.createBitmap(
-                image.width + rowPadding / plane.pixelStride, image.height, Bitmap.Config.ARGB_8888
-            ).also { it.copyPixelsFromBuffer(plane.buffer) }
-            val cropped = Bitmap.createBitmap(bmp, 0, 0, image.width, image.height)
-            bmp.recycle()
-            if (isFrameSecure(cropped)) {
-                cropped.recycle()
-                return null
+            val buffer = plane.buffer
+            val rowStride = plane.rowStride
+            val pixelStride = plane.pixelStride
+            val rowPadding = rowStride - pixelStride * image.width
+
+            val bitmap = Bitmap.createBitmap(
+                image.width + rowPadding / pixelStride,
+                image.height,
+                Bitmap.Config.ARGB_8888
+            )
+            bitmap.copyPixelsFromBuffer(buffer)
+
+            val bitmapForInference = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+
+            // FLAG_SECURE detection — two-stage: cheap center pre-filter, then 5×5 grid
+            val centerPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+            val flagSecure = if (Color.red(centerPixel) >= 30 || Color.green(centerPixel) >= 30 || Color.blue(centerPixel) >= 30) {
+                false
+            } else {
+                val fractions = floatArrayOf(0.1f, 0.3f, 0.5f, 0.7f, 0.9f)
+                var blackCount = 0
+                for (fx in fractions) for (fy in fractions) {
+                    val px = bitmap.getPixel((bitmap.width * fx).toInt(), (bitmap.height * fy).toInt())
+                    if (Color.red(px) < 30 && Color.green(px) < 30 && Color.blue(px) < 30) blackCount++
+                }
+                blackCount >= 24
             }
-            val file = File(cacheDir, "orion_frame.png")
-            FileOutputStream(file).use { cropped.compress(Bitmap.CompressFormat.PNG, 90, it) }
-            cropped.recycle()
-            file.absolutePath
+            if (flagSecure) {
+                Log.w(TAG, "FLAG_SECURE likely active — grid check: 24+/25 sample points near-black")
+            }
+
+            val outDir = getExternalFilesDir(null) ?: filesDir
+            val file = File(outDir, "frame_${System.currentTimeMillis()}.jpg")
+            try {
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                }
+                Log.i(TAG, "Frame #$frameNum saved → ${file.absolutePath}")
+            } finally {
+                bitmap.recycle()
+            }
+
+            if (targetApp.isNotBlank() && OrionAccessibilityService.lastAppPackage != targetApp) {
+                bitmapForInference.recycle()
+                Log.d(TAG, "Skipping inference — lastApp=${OrionAccessibilityService.lastAppPackage}, target=$targetApp")
+                return
+            }
+
+            val lm = LiteRTLMManager.getInstance(this)
+            if (!flagSecure && lm.isReady()) {
+                if (inferenceActive.compareAndSet(false, true)) {
+                    val nodes: List<Pair<String, Rect>> = buildList {
+                        val root = OrionAccessibilityService.instance?.rootInActiveWindow
+                        if (root != null) {
+                            collectClickableNodes(root, this)
+                            root.recycle()
+                        } else {
+                            Log.w(TAG, "rootInActiveWindow is null — no node list")
+                        }
+                    }
+
+                    if (nodes.isEmpty()) {
+                        bitmapForInference.recycle()
+                        inferenceActive.set(false)
+                        Log.w(TAG, "Node list empty — skipping inference, retrying in 800ms")
+                        captureHandler.postDelayed({ captureFrame() }, 800L)
+                        return
+                    }
+                    Log.d(TAG, "Collected ${nodes.size} clickable nodes")
+
+                    val screenW = bitmapForInference.width
+                    val screenH = bitmapForInference.height
+                    inferenceScope.launch {
+                        try {
+                            val inferenceStartMs = System.currentTimeMillis()
+                            val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, lastSuccessfulAction)
+                            val elapsedMs = System.currentTimeMillis() - inferenceStartMs
+                            Log.i(TAG, "Frame #$frameNum inference: ${elapsedMs}ms | phase=${perception.screenPhase} conf=${perception.confidence} | ${plan.summaryForUser}")
+                            appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
+
+                            val actionExecuted = if (plan.actions.isNotEmpty()) {
+                                val action = plan.actions[0]
+                                val nodeIdx = action.nodeIndex
+                                val target = when {
+                                    nodeIdx != null && nodeIdx in nodes.indices ->
+                                        nodes[nodeIdx]
+                                    action.nodeText != null -> {
+                                        val t = action.nodeText
+                                        nodes.firstOrNull { it.first == t }
+                                            ?: nodes.firstOrNull { it.first.equals(t, ignoreCase = true) }
+                                            ?: nodes.firstOrNull { it.first.startsWith(t, ignoreCase = true) }
+                                            ?: nodes.firstOrNull { it.first.contains(t, ignoreCase = true) }
+                                    }
+                                    else -> null
+                                }
+                                if (target != null) {
+                                    if (action.type == "type_text" && action.text != null) {
+                                        val targetBounds = target.second
+                                        val serviceRoot = OrionAccessibilityService.instance?.rootInActiveWindow
+                                        val nodeInfo = serviceRoot?.let { root ->
+                                            findNodeByBounds(root, targetBounds)
+                                        }
+                                        serviceRoot?.recycle()
+                                        if (nodeInfo != null) {
+                                            Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
+                                            OrionAccessibilityService.instance?.executor?.dispatchText(nodeInfo, action.text)
+                                            nodeInfo.recycle()
+                                            lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
+                                        } else {
+                                            Log.w(TAG, "type_text: could not find AccessibilityNodeInfo for '${target.first}'")
+                                        }
+                                        retryContext = ""
+                                        nodeInfo != null
+                                    } else {
+                                        val cx = target.second.centerX().toFloat()
+                                        val cy = target.second.centerY().toFloat()
+                                        Log.i(TAG, "Auto-tapping '${target.first}' at ($cx, $cy) [nodeIdx=$nodeIdx]")
+                                        OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
+                                        lastSuccessfulAction = "Tapped '${target.first}'"
+                                        retryContext = ""
+                                        true
+                                    }
+                                } else {
+                                    retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
+                                        "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
+                                        "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
+                                    Log.w(TAG, "Tap resolution failed — nodeIdx=$nodeIdx nodeText=${action.nodeText}")
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+
+                            if (!actionExecuted) {
+                                if (retryCount < MAX_TAP_RETRIES) {
+                                    retryCount++
+                                    Log.w(TAG, "No action executed — scheduling retry $retryCount/$MAX_TAP_RETRIES")
+                                    captureHandler.postDelayed({ captureFrame() }, 600L)
+                                } else {
+                                    Log.e(TAG, "No action executed after $MAX_TAP_RETRIES retries — giving up")
+                                    retryCount = 0
+                                    retryContext = ""
+                                }
+                            } else {
+                                retryCount = 0
+                                retryContext = ""
+                            }
+
+                            onPlanResult?.let { cb ->
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    cb(perception.rawDescription, plan)
+                                }
+                            }
+                        } finally {
+                            bitmapForInference.recycle()
+                            inferenceActive.set(false)
+                        }
+                    }
+                } else {
+                    bitmapForInference.recycle()
+                    Log.d(TAG, "Inference in flight — skipping frame")
+                }
+            } else {
+                bitmapForInference.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "captureFrame failed: ${e.message}")
         } finally {
             image.close()
         }
     }
 
-    private fun runAgentCycle(nodes: List<AccessibilityNodeInfo>) {
-        isLoopRunning = true
-        serviceScope.launch {
-            try {
-                Log.d(TAG, "Agent cycle started")
-                val screenshotPath = withContext(Dispatchers.IO) { captureFrameToFile() }
-                    ?: return@launch
-
-                val manager = LiteRTLMManager.getInstance(this@ScreenCaptureService)
-                val accessService = OrionAccessibilityService.instance
-                    ?: return@launch
-                if (executor == null) executor = AccessibilityAutomationExecutor(accessService)
-
-                val nodeList = nodes.mapIndexed { i, n ->
-                    "$i: ${n.text?.toString() ?: n.contentDescription?.toString() ?: "(no label)"}"
-                }.joinToString("\n")
-                val prompt = LiteRTLMManager.buildPrompt(currentGoal, nodeList, retryContext())
-
-                val responseBuilder = StringBuilder()
-                manager.sendAgentMessage(screenshotPath, prompt).collect { token ->
-                    responseBuilder.append(token)
-                }
-                val plan = LiteRTLMManager.parseResponse(responseBuilder.toString())
-                Log.d(TAG, "Plan parsed: ${plan.summaryForUser}, actions=${plan.actions.size}")
-                withContext(Dispatchers.IO) { executePlan(plan, nodes) }
-            } finally {
-                isLoopRunning = false
+    private fun collectClickableNodes(node: AccessibilityNodeInfo, result: MutableList<Pair<String, Rect>>) {
+        if (node.isClickable) {
+            val text = node.text?.toString()?.takeIf { it.isNotBlank() }
+                ?: node.contentDescription?.toString()?.takeIf { it.isNotBlank() }
+                ?: subtreeText(node).takeIf { it.isNotBlank() }
+            if (!text.isNullOrBlank()) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                result.add(text to rect)
+                return
             }
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectClickableNodes(child, result)
+            child.recycle()
         }
     }
 
-    private fun retryContext(): String? = if (retryCount > 0) lastError else null
-
-    private fun executePlan(plan: Plan, nodes: List<AccessibilityNodeInfo>) {
-        for (action in plan.actions) {
-            val result = executeAction(action, nodes)
-            if (result.success) {
-                retryCount = 0
-                lastError = null
-            } else {
-                retryCount++
-                lastError = result.errorCode
-                if (retryCount >= MAX_RETRIES) { retryCount = 0; lastError = null }
-            }
+    private fun subtreeText(node: AccessibilityNodeInfo): String {
+        val parts = mutableListOf<String>()
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val t = child.text?.toString()?.takeIf { it.isNotBlank() }
+                ?: child.contentDescription?.toString()?.takeIf { it.isNotBlank() }
+                ?: subtreeText(child)
+            if (t.isNotBlank()) parts.add(t)
+            child.recycle()
         }
+        return parts.joinToString(" ")
     }
 
-    private fun executeAction(action: PlanAction, nodes: List<AccessibilityNodeInfo>): ExecutionResult {
-        val exec = executor ?: return ExecutionResult(false, errorCode = "NO_EXECUTOR")
-        return when (action.type) {
-            "tap_node" -> {
-                val node = action.nodeIndex?.takeIf { it < nodes.size }?.let { nodes[it] }
-                    ?: action.nodeText?.let { t -> nodes.firstOrNull { it.text?.toString() == t } }
-                when {
-                    node != null -> exec.tapNode(node)
-                    action.x != null && action.y != null -> exec.dispatchTap(action.x, action.y)
-                    else -> ExecutionResult(false, errorCode = "NODE_NOT_FOUND")
-                }
-            }
-            "type_text" -> {
-                val text = action.text ?: return ExecutionResult(false, errorCode = "NO_TEXT")
-                val node = action.nodeIndex?.takeIf { it < nodes.size }?.let { nodes[it] }
-                    ?: return ExecutionResult(false, errorCode = "NO_NODE_FOR_TEXT")
-                exec.typeText(node, text)
-            }
-            else -> ExecutionResult(false, errorCode = "UNKNOWN_ACTION")
+    private fun findNodeByBounds(node: AccessibilityNodeInfo, bounds: Rect): AccessibilityNodeInfo? {
+        val nodeBounds = Rect()
+        node.getBoundsInScreen(nodeBounds)
+        if (nodeBounds == bounds) return AccessibilityNodeInfo.obtain(node)
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeByBounds(child, bounds)
+            child.recycle()
+            if (found != null) return found
         }
+        return null
     }
-
-    override fun onDestroy() {
-        Log.i(TAG, "Service destroyed")
-        serviceScope.cancel()
-        virtualDisplay?.release()
-        imageReader?.close()
-        mediaProjection?.stop()
-        OrionAccessibilityService.instance?.onCaptureRequested = null
-        super.onDestroy()
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Screen Capture", NotificationManager.IMPORTANCE_LOW)
+        val channel = NotificationChannel(
+            CHANNEL_ID, "Orion Capture Service",
+            NotificationManager.IMPORTANCE_LOW
         )
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Orion is running")
-            .setContentText("AI agent active")
+            .setContentTitle("Orion")
+            .setContentText("Screen capture active")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setOngoing(true)
             .build()
+
+    private fun appendInferenceLog(
+        frameNum: Int,
+        elapsedMs: Long,
+        goal: String,
+        app: String,
+        rawResponse: String,
+        summary: String,
+        actions: List<PlanAction>,
+    ) {
+        try {
+            val actionsArr = JSONArray()
+            actions.forEach { a ->
+                actionsArr.put(JSONObject().apply {
+                    put("type", a.type)
+                    a.nodeIndex?.let { put("nodeIndex", it) }
+                    a.nodeText?.let { put("nodeText", it) }
+                    a.x?.let { put("x", it) }
+                    a.y?.let { put("y", it) }
+                })
+            }
+            val entry = JSONObject().apply {
+                put("frame", frameNum)
+                put("timestamp_ms", System.currentTimeMillis())
+                put("elapsed_ms", elapsedMs)
+                put("goal", goal)
+                put("app", app)
+                put("summary", summary)
+                put("actions", actionsArr)
+                put("raw_response", rawResponse)
+            }
+            val logFile = File(getExternalFilesDir(null) ?: filesDir, "orion_inference.jsonl")
+            FileWriter(logFile, true).use { it.write(entry.toString() + "\n") }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to write inference log: ${e.message}")
+        }
+    }
+
+    override fun onDestroy() {
+        instance = null
+        mediaProjection?.stop()
+        virtualDisplay?.release()
+        imageReader?.close()
+        captureThread.quitSafely()
+        inferenceScope.cancel()
+        Log.i(TAG, "Service destroyed")
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 }
