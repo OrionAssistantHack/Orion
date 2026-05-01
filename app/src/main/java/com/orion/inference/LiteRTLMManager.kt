@@ -30,7 +30,7 @@ import kotlin.coroutines.resumeWithException
 
 private const val TAG = "Orion.LiteRTLMManager"
 
-private fun buildPrompt(
+internal fun buildPrompt(
     goal: String,
     nodes: List<Pair<String, Rect>>,
     screenWidth: Int,
@@ -58,14 +58,14 @@ private fun buildPrompt(
     Log.d(TAG, "History prefix:")
     Log.d(TAG, historyPrefix)
 
-    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What single element should be tapped to make progress?$nodeList
+    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress based on the summary you are providing to the user?$nodeList
 
 Reply ONLY with a single valid JSON object, no markdown:
 {
   "screenPhase": "<UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION>",
   "extractedData": {"price": "...", "eta": "...", "service": "..."},
   "confidence": 0.0,
-  "summaryForUser": "<one sentence: what action is being taken and why>",
+  "summaryForUser": "<one sentence: what action is being taken>",
   "actions": [
     {"type": "tap_node", "nodeIndex": <1-based>, "nodeText": "<exact text>"}
     OR
@@ -76,7 +76,9 @@ Use empty actions array if no action is needed. nodeIndex must be a valid index 
 
 Action type rules:
 - Use tap_node for: buttons, links, cards, navigation elements, and search placeholders (e.g. "Where to?", "Search here") — anything that may open a new screen or focus an input when tapped.
-- Use type_text ONLY when: a keyboard is already visible on screen AND a text field is actively focused and ready to receive input (e.g. a blinking cursor is visible). Do NOT use type_text on a placeholder that requires a tap to open first."""
+- Use type_text ONLY when: A KEYBOARD IS ALREADY VISIBLE ON THE SCREEN.
+
+Analyze the Android app screenshot. What single action should be taken to make progress?"""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
