@@ -105,12 +105,30 @@ class MainActivity : AppCompatActivity() {
             val btn = Button(this).apply {
                 text = label
                 setOnClickListener {
+                    if (selectedMode == mode) return@setOnClickListener
                     selectedMode = mode
                     binding.textInferenceMode.text = "Inference mode: $label"
+                    switchInferenceMode()
                 }
             }
             binding.layoutModeSelector.addView(btn)
         }
+    }
+
+    private fun switchInferenceMode() {
+        binding.btnStart.isEnabled = false
+        binding.textStatus.text = getString(R.string.status_loading)
+
+        // Cleanup whichever engine is currently active
+        val current = ScreenCaptureService.activeEngine
+        if (current is DualNpuPipeline) {
+            current.cleanup()
+        } else {
+            liteRTLMManager.cleanup()
+        }
+        ScreenCaptureService.activeEngine = null
+
+        initializeModel()
     }
 
     private fun setupButtons() {
@@ -171,7 +189,9 @@ class MainActivity : AppCompatActivity() {
 
         // Reuse if already ready on the same mode
         val existingEngine = ScreenCaptureService.activeEngine
-        if (existingEngine != null && existingEngine.isReady()) {
+        val engineMatchesMode = (selectedMode == "gpu" && existingEngine is LiteRTLMManager)
+            || (selectedMode == "npu" && existingEngine is DualNpuPipeline)
+        if (existingEngine != null && existingEngine.isReady() && engineMatchesMode) {
             binding.textBackendStatus.text = existingEngine.getDescription()
             binding.textStatus.text = getString(R.string.status_ready)
             binding.btnStart.isEnabled = true
