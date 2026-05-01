@@ -76,8 +76,9 @@ Reply ONLY with a single valid JSON object, no markdown:
 Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
 Action type rules:
-- If "keyboardVisible" is true, action.type MUST be "type_text" or "none" — tap_node is forbidden.
-- Otherwise use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here")."""
+- If "keyboardVisible" is false, action.type MUST be "tap_node". "type_text" is forbidden.
+- Otherwise use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here").
+- Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next") to advance."""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
