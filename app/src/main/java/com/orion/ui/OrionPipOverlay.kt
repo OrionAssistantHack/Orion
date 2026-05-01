@@ -1,5 +1,6 @@
 package com.orion.ui
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
@@ -11,6 +12,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 
@@ -20,6 +22,8 @@ private val mainHandler = Handler(Looper.getMainLooper())
 object OrionPipOverlay {
 
     private var pillView: android.view.View? = null
+    private var breathingAnimators: List<ObjectAnimator> = emptyList()
+
     @Volatile
     var isShowing: Boolean = false
         private set
@@ -47,10 +51,17 @@ object OrionPipOverlay {
                 x = metrics.widthPixels - size - (24 * dp).toInt()
                 y = metrics.heightPixels - size - (120 * dp).toInt()
             }
-            makeDraggable(view, wm, params)
+            makeDraggable(view, wm, params) {
+                appCtx.startActivity(
+                    Intent(appCtx, com.orion.MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                )
+            }
             wm.addView(view, params)
             pillView = view
             isShowing = true
+            startBreathing(view)
             Log.i(TAG, "Pip shown")
         }
     }
@@ -60,6 +71,8 @@ object OrionPipOverlay {
             mainHandler.post { dismiss() }
             return
         }
+        breathingAnimators.forEach { it.cancel() }
+        breathingAnimators = emptyList()
         val view = pillView ?: return
         try {
             val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -69,6 +82,25 @@ object OrionPipOverlay {
         }
         pillView = null
         isShowing = false
+    }
+
+    private fun startBreathing(view: android.view.View) {
+        val interp = AccelerateDecelerateInterpolator()
+        val sx = ObjectAnimator.ofFloat(view, "scaleX", 1f, 1.13f).apply {
+            duration = 900
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.REVERSE
+            interpolator = interp
+        }
+        val sy = ObjectAnimator.ofFloat(view, "scaleY", 1f, 1.13f).apply {
+            duration = 900
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.REVERSE
+            interpolator = interp
+        }
+        breathingAnimators = listOf(sx, sy)
+        sx.start()
+        sy.start()
     }
 
     private fun buildDot(context: Context, size: Int): android.view.View {
@@ -90,12 +122,6 @@ object OrionPipOverlay {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
             })
-            setOnClickListener {
-                val intent = Intent(context, com.orion.MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-                context.startActivity(intent)
-            }
         }
     }
 
@@ -103,11 +129,13 @@ object OrionPipOverlay {
         view: android.view.View,
         wm: WindowManager,
         params: WindowManager.LayoutParams,
+        onTap: () -> Unit,
     ) {
         var startX = 0f
         var startY = 0f
         var startParamX = 0
         var startParamY = 0
+        val tapSlop = 8f * view.context.resources.displayMetrics.density
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -119,6 +147,12 @@ object OrionPipOverlay {
                     params.x = startParamX + (event.rawX - startX).toInt()
                     params.y = startParamY + (event.rawY - startY).toInt()
                     wm.updateViewLayout(view, params)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val dx = event.rawX - startX
+                    val dy = event.rawY - startY
+                    if (dx * dx + dy * dy < tapSlop * tapSlop) onTap()
                     true
                 }
                 else -> false

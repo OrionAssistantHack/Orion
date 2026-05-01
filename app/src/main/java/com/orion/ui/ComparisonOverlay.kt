@@ -13,10 +13,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.orion.R
 import com.orion.core.ComparisonSession
 import com.orion.core.KnownApp
 import com.orion.core.ParsedGoal
@@ -131,7 +129,7 @@ object ComparisonOverlay {
         val cheapest = session.cheapestApp
         val fastest = session.fastestApp
 
-        // Result rows
+        // Result rows — each row is tappable to book that app
         for ((pkg, fare) in session.collectedFares) {
             val app = session.apps.firstOrNull { it.packageName == pkg } ?: continue
             val isCheapest = app == cheapest
@@ -151,6 +149,9 @@ object ComparisonOverlay {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = (8 * dp).toInt() }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { dismiss(); onBook(app) }
             }
 
             val leftCol = LinearLayout(context).apply {
@@ -192,27 +193,15 @@ object ComparisonOverlay {
                     gravity = Gravity.END
                 })
             }
+            rightCol.addView(TextView(context).apply {
+                text = "Book →"
+                setTextColor(if (isCheapest) 0xFF16A34A.toInt() else 0xFFF97316.toInt())
+                textSize = 12f
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.END
+            })
             row.addView(rightCol)
             root.addView(row)
-        }
-
-        // Book CTA
-        val bookTarget = cheapest
-            ?: session.apps.firstOrNull { session.collectedFares.containsKey(it.packageName) }
-        if (bookTarget != null) {
-            root.addView(Button(context).apply {
-                text = "Book with ${bookTarget.displayName} →"
-                setTextColor(0xFFFFFFFF.toInt())
-                setBackgroundResource(R.drawable.bg_gradient_brand)
-                setOnClickListener { dismiss(); onBook(bookTarget) }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = (16 * dp).toInt()
-                    bottomMargin = (8 * dp).toInt()
-                }
-            })
         }
 
         // Dismiss link
