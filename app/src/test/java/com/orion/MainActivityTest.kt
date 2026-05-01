@@ -84,4 +84,24 @@ class MainActivityTest {
             }
         }
     }
+
+    @Test
+    fun ridesCards_containComparisonCard() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val cards = activity.presetCardsFor("rides")
+                assertTrue(cards.any { it.packageName == null })
+            }
+        }
+    }
+
+    @Test
+    fun foodCards_containGrubhub() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val cards = activity.presetCardsFor("food")
+                assertTrue(cards.any { it.packageName == "com.grubhub.android" })
+            }
+        }
+    }
 }
