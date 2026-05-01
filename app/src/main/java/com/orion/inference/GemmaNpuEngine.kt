@@ -45,6 +45,7 @@ class GemmaNpuEngine private constructor(private val context: Context) : Inferen
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         configureNativeRuntime(nativeLibDir)
         if (initGeneration != generation) return@withContext
+        Log.i(TAG, "Initializing with model: $modelPath")
         try {
             val cfg = EngineConfig(
                 modelPath = modelPath,
