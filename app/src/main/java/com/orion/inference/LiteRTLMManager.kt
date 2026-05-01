@@ -346,3 +346,44 @@ private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
         PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, raw) to Plan(raw.take(120), emptyList())
     }
 }
+
+fun logGemmaToQwen(rawJson: String, tag: String = "GemmaToQwen"): List<String> {
+    val cleaned = run {
+        val t = rawJson.trim()
+        if (!t.startsWith("```")) t
+        else {
+            val nl = t.indexOf('\n')
+            val open = if (nl >= 0) t.substring(nl + 1) else t.removePrefix("```")
+            open.removeSuffix("```").trim()
+        }
+    }
+    if (cleaned.isEmpty()) {
+        Log.w(tag, "Empty Gemma response")
+        return emptyList()
+    }
+
+    val obj = try {
+        JSONObject(cleaned)
+    } catch (e: Exception) {
+        Log.w(tag, "Not valid JSON: ${e.message}")
+        return emptyList()
+    }
+
+    val actionObj = obj.optJSONObject("action")
+    if (actionObj == null) {
+        Log.d(tag, "Qwen pipeline input: (no action)")
+        return emptyList()
+    }
+
+    val out = mutableListOf<String>()
+    val nodeText = actionObj.optString("nodeText").trim()
+    when (actionObj.optString("type")) {
+        "tap_node" -> if (nodeText.isNotEmpty()) out += "tap:$nodeText"
+        "type_text" -> {
+            val text = actionObj.optString("text").trim()
+            if (text.isNotEmpty()) out += "type:$text"
+        }
+    }
+    Log.d(tag, "Qwen pipeline input: ${out.joinToString(" ; ")}")
+    return out
+}

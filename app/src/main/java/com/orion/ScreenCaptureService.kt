@@ -27,6 +27,7 @@ import androidx.core.app.NotificationCompat
 import com.orion.core.PlanAction
 import com.orion.inference.InferenceEngine
 import com.orion.inference.LiteRTLMManager
+import com.orion.inference.logGemmaToQwen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -312,6 +313,7 @@ class ScreenCaptureService : Service() {
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
                             Log.i(TAG, "Frame #$frameNum [${lm.getDescription()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
                             Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
+                            logGemmaToQwen(perception.rawDescription, TAG)
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
 
