@@ -107,6 +107,7 @@ class ScreenCaptureService : Service() {
         private const val MIN_NODES_THRESHOLD = 5
         private const val MAX_THIN_NODE_RETRIES = 2
         private const val POST_ACTION_DELAY_MS = 2500L
+        private const val MAX_FRAME_FILES = 10
 
         private var instance: WeakReference<ScreenCaptureService>? = null
 
@@ -192,6 +193,8 @@ class ScreenCaptureService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+
+        pruneFrameFiles(getExternalFilesDir(null) ?: filesDir, keep = 0)
 
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val projectionData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -306,6 +309,7 @@ class ScreenCaptureService : Service() {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
                 }
                 Log.i(TAG, "Frame #$frameNum saved → ${file.absolutePath}")
+                pruneFrameFiles(outDir, keep = MAX_FRAME_FILES)
             } finally {
                 bitmap.recycle()
             }
@@ -709,6 +713,12 @@ class ScreenCaptureService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to write inference log: ${e.message}")
         }
+    }
+
+    private fun pruneFrameFiles(dir: File, keep: Int) {
+        val frames = dir.listFiles { f -> f.name.startsWith("frame_") && f.name.endsWith(".jpg") }
+            ?.sortedBy { it.name } ?: return
+        frames.dropLast(keep).forEach { it.delete() }
     }
 
     override fun onDestroy() {
