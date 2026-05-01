@@ -18,7 +18,16 @@ class OrionAccessibilityService : AccessibilityService() {
         private const val TAG = "Orion.A11y"
         private const val DEBOUNCE_MS = 700L
         private const val MAX_WAIT_MS = 3000L
-        private val WATCHED_PACKAGES = setOf("com.ubercab", "me.lyft.android", "com.google.aiedge.gallery")
+        private val WATCHED_PACKAGES = setOf(
+            "com.ubercab",
+            "com.lyft.android",
+            "me.lyft.android",
+            "com.waymo.ridewithwaymo",
+            "com.ubercab.eats",
+            "com.dd.doordash",
+            "com.grubhub.android",
+            "com.google.aiedge.gallery",
+        )
         private val SYSTEM_PACKAGES = setOf("com.android.systemui", "android")
 
         @Volatile var instance: OrionAccessibilityService? = null

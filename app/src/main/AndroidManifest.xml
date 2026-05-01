@@ -9,10 +9,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <queries>
+        <!-- RIDES -->
         <package android:name="com.ubercab" />
+        <package android:name="com.lyft.android" />
         <package android:name="me.lyft.android" />
+        <package android:name="com.waymo.ridewithwaymo" />
+        <!-- FOOD DELIVERY -->
+        <package android:name="com.ubercab.eats" />
+        <package android:name="com.dd.doordash" />
+        <package android:name="com.grubhub.android" />
+        <!-- EXISTING -->
         <package android:name="com.google.aiedge.gallery" />
     </queries>
 
