@@ -23,7 +23,7 @@ class ComparisonSessionTest {
     @Test
     fun session_startsAtFirstApp() {
         val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft")
-        assertEquals("com.ubercab", s.currentApp.packageName)
+        assertEquals("com.ubercab", s.currentApp!!.packageName) // session not complete yet
         assertFalse(s.isComplete)
     }
 
@@ -32,7 +32,7 @@ class ComparisonSessionTest {
         val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft")
         s.collectedFares["com.ubercab"] = FareData("$14.00", 6, 0.9f)
         s.advance()
-        assertEquals("com.lyft.android", s.currentApp.packageName)
+        assertEquals("com.lyft.android", s.currentApp!!.packageName) // session not complete yet
         assertFalse(s.isComplete)
     }
 
@@ -78,5 +78,21 @@ class ComparisonSessionTest {
         s.collectedFares["com.ubercab"] = FareData("$10.00", 5, 0.9f)
         s.advance()
         assertTrue(s.isComplete)
+    }
+
+    @Test
+    fun session_cheapestApp_handlesDeliveryFeeStylePrice() {
+        val s = rideSession("com.ubercab" to "Uber", "com.ubercab.eats" to "Uber Eats")
+        s.collectedFares["com.ubercab"] = FareData("$14.00", 6, 0.9f)
+        s.collectedFares["com.ubercab.eats"] = FareData("$3.99 delivery", null, 0.8f)
+        assertEquals("com.ubercab.eats", s.cheapestApp?.packageName)
+    }
+
+    @Test
+    fun session_fastestApp_nullWhenAllEtasNull() {
+        val s = rideSession("com.ubercab" to "Uber", "com.lyft.android" to "Lyft")
+        s.collectedFares["com.ubercab"] = FareData("$14.00", null, 0.9f)
+        s.collectedFares["com.lyft.android"] = FareData("$12.50", null, 0.9f)
+        assertNull(s.fastestApp)
     }
 }

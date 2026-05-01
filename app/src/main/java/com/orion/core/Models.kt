@@ -72,19 +72,19 @@ class ComparisonSession(
 ) {
     var currentIndex: Int = 0
         private set
-    val collectedFares: MutableMap<String, FareData> = mutableMapOf()
+    val collectedFares: MutableMap<String, FareData> = java.util.concurrent.ConcurrentHashMap()
 
-    val currentApp: KnownApp get() = apps[currentIndex]
+    val currentApp: KnownApp? get() = apps.getOrNull(currentIndex)
     val isComplete: Boolean get() = currentIndex >= apps.size
 
     fun advance() { currentIndex++ }
 
-    private fun priceCents(fare: FareData): Double =
+    private fun priceValue(fare: FareData): Double =
         fare.price.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: Double.MAX_VALUE
 
     val cheapestApp: KnownApp?
         get() = collectedFares.entries
-            .minByOrNull { priceCents(it.value) }
+            .minByOrNull { priceValue(it.value) }
             ?.key
             ?.let { pkg -> apps.firstOrNull { it.packageName == pkg } }
 
