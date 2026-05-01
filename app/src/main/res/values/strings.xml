@@ -19,8 +19,6 @@
     <string name="onboarding_step3_body">When Orion compares prices across apps, it shows you the results in a floating panel so you can pick the best deal.</string>
     <string name="onboarding_step3_cta">Allow Overlay</string>
     <string name="onboarding_step3_hint">Takes you to Display settings</string>
-    <string name="label_target_app">Target app: </string>
-    <string name="btn_start">Use Assistant</string>
     <string name="btn_stop">Stop</string>
     <string name="send_goal">Send goal</string>
     <string name="label_your_goal">YOUR GOAL</string>

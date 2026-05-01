@@ -38,7 +38,6 @@ data class PresetCard(
 
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = "Orion.MainActivity"
     private lateinit var binding: ActivityMainBinding
     private lateinit var liteRTLMManager: LiteRTLMManager
 
