@@ -72,18 +72,18 @@ Reply ONLY with a single valid JSON object, no markdown:
     "nodeText": "<exact text of the node, or null>",
     "text": "<text to type if type_text, otherwise null>"
   },
-  "screenPhase": "<UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION>",
+  "screenPhase": "<UNKNOWN|HOME|LOADING|INPUT_REQUIRED|SELECTION|CONFIRMATION>",
   "extractedData": {"price": "...", "eta": "...", "service": "..."},
   "confidence": 0.0,
   "summaryForUser": "<one sentence: what action is being taken>"
 }
 Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
-Action type rules (the "Keyboard visible" line above is the ground truth — use it):
-- If Keyboard visible is TRUE and the input field is empty or does not yet contain the goal text, action.type MUST be "type_text". Set "text" to the value derived from the user's goal, and "nodeIndex"/"nodeText" to the INPUT FIELD entry marked above.
-- If Keyboard visible is TRUE and the input field already contains the goal text, action.type MUST be "tap_node" on a search result entry from the list (NOT the INPUT FIELD entry). Pick the result whose text best matches the goal destination.
-- If Keyboard visible is FALSE, action.type MUST be "tap_node". Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here").
-- Use "none" ONLY when a final confirmation screen is visible (e.g. ride booked, order placed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next") to advance."""
+Action type rules:
+- If "keyboardVisible" is false, action.type MUST be "tap_node". "type_text" is forbidden.
+- Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here", "Search for a restaurant").
+- If the screen looks like it is still loading (very few elements visible), set screenPhase to "LOADING" and tap the most likely next element to continue the flow, or the back button if nothing relevant is visible.
+- Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed, item added to cart). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next", "Place Order", "Checkout") to advance."""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {

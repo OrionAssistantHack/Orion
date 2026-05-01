@@ -42,6 +42,21 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
                 candidates = findNodesByTextDFS(root, nodeText)
             }
             if (candidates.isNullOrEmpty()) {
+                // Composite labels (e.g. "Where to? Schedule a Ride Later") won't match any
+                // single a11y node — try each sentence/clause segment individually.
+                val segments = nodeText.split(Regex("(?<=[?!])\\s+|,\\s*|\n"))
+                    .map { it.trim() }.filter { it.length >= 3 && it != nodeText }
+                for (seg in segments) {
+                    var segCandidates = root.findAccessibilityNodeInfosByText(seg)
+                    if (segCandidates.isNullOrEmpty()) segCandidates = findNodesByTextDFS(root, seg)
+                    if (!segCandidates.isNullOrEmpty()) {
+                        Log.d(TAG, "tapNode: retrying with segment '$seg'")
+                        candidates = segCandidates
+                        break
+                    }
+                }
+            }
+            if (candidates.isNullOrEmpty()) {
                 return ExecutionResult(false, errorCode = "NODE_NOT_FOUND")
             }
             var tapped = false
