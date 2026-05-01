@@ -264,6 +264,7 @@ class MainActivity : AppCompatActivity() {
             getExternalFilesDir(null)?.absolutePath
         )
         val modelNames = listOf(
+            "gemma-4-E4B-it.litertlm",
             "gemma-4-E2B-it.litertlm",
             "gemma-4-E2B-it_qualcomm_sm8750.litertlm"
         )

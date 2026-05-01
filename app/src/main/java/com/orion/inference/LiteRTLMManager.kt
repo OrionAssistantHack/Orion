@@ -96,9 +96,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         cleanup()
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         val backends = listOf(
-            BackendFactory("NPU") { Backend.NPU(nativeLibraryDir = nativeLibDir) },
-            BackendFactory("GPU") { Backend.GPU() },
-            BackendFactory("CPU") { Backend.CPU() }
+            BackendFactory("GPU") { Backend.GPU() }
         )
         val generation = initGeneration
         initializeWithFallback(modelPath, backends, nativeLibDir, generation)
