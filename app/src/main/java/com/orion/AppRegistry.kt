@@ -71,12 +71,12 @@ object AppRegistry {
     )
 
     // Returns only the apps in the given category that are installed on this device.
-    // Deduplicates by packageName so me.lyft.android and com.lyft.android don't both appear.
+    // Deduplicate by displayName so both Lyft package variants never both appear.
     fun installedFor(context: Context, category: AppCategory): List<KnownApp> {
         val pm = context.packageManager
         return ALL
             .filter { it.category == category }
             .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
-            .distinctBy { it.packageName }
+            .distinctBy { it.displayName }
     }
 }

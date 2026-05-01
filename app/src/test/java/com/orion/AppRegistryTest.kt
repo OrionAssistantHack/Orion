@@ -45,4 +45,20 @@ class AppRegistryTest {
             it.packageName == "com.dd.doordash" && it.category == AppCategory.FOOD_DELIVERY
         })
     }
+
+    @Test
+    fun registry_noTwoRideAppsShareDisplayName_inAll() {
+        // Both Lyft package variants exist in ALL, but installedFor() deduplicates by displayName.
+        // This test verifies that ALL itself has no accidental duplicate displayNames *beyond*
+        // the intentional Lyft alias pair.
+        val rideApps = AppRegistry.ALL.filter { it.category == AppCategory.RIDES }
+        val countByName = rideApps.groupBy { it.displayName }
+        // Only "Lyft" is allowed to have 2 entries (me.lyft.android + com.lyft.android aliases).
+        countByName.forEach { (name, apps) ->
+            assertTrue(
+                "Unexpected duplicate displayName '$name' in RIDES (only Lyft aliases are allowed)",
+                apps.size <= 2 && (apps.size == 1 || name == "Lyft")
+            )
+        }
+    }
 }
