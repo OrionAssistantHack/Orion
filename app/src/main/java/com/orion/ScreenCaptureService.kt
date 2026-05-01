@@ -403,12 +403,14 @@ class ScreenCaptureService : Service() {
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
 
-                            // Comparison mode: when fare estimate screen reached with price, advance to next app.
+                            // Comparison mode: when price is extracted, we've reached the fare screen.
+                            // Don't gate on screenPhase — the LLM returns SELECTION for Uber's fare
+                            // selection screen, not FARE_ESTIMATE, so phase-based detection is unreliable.
                             val session = comparisonSession
                             if (session != null && !session.isComplete) {
                                 val price = perception.extractedData["price"]
                                     ?.takeIf { it.isNotBlank() && it != "null" }
-                                if (perception.screenPhase == com.orion.core.ScreenPhase.FARE_ESTIMATE && price != null) {
+                                if (price != null) {
                                     val eta = perception.extractedData["eta"]
                                         ?.replace(Regex("[^0-9]"), "")
                                         ?.toIntOrNull()
