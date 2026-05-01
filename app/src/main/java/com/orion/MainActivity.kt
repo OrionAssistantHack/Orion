@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.widget.Button
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -26,7 +27,30 @@ class MainActivity : AppCompatActivity() {
     private lateinit var liteRTLMManager: LiteRTLMManager
 
     private var selectedPackage = "com.ubercab"
-    private val captureRequestCode = 2001
+
+    private val screenCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val goal = binding.editGoal.text.toString().trim()
+            ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
+            val launchIntent = packageManager.getLaunchIntentForPackage(selectedPackage)
+                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (launchIntent != null) startActivity(launchIntent)
+            binding.btnStop.isEnabled = true
+            binding.textStatus.text = getString(R.string.status_running)
+        } else {
+            binding.btnStart.isEnabled = true
+            binding.textStatus.text = "Screen capture permission denied"
+        }
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) requestScreenCapture()
+        else binding.textStatus.text = "Notification permission denied"
+    }
 
     private val appOptions =
             listOf(
@@ -87,30 +111,20 @@ class MainActivity : AppCompatActivity() {
             binding.textStatus.text = "App not found: $selectedPackage"
             return
         }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            requestScreenCapture()
+        }
+    }
+
+    private fun requestScreenCapture() {
         binding.textStatus.text = "Requesting screen capture permission…"
         binding.btnStart.isEnabled = false
         val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(mgr.createScreenCaptureIntent(), captureRequestCode)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == captureRequestCode) {
-            if (resultCode == RESULT_OK && data != null) {
-                val goal = binding.editGoal.text.toString().trim()
-                ScreenCaptureService.startCapture(this, resultCode, data, goal, selectedPackage)
-                val launchIntent = packageManager.getLaunchIntentForPackage(selectedPackage)
-                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (launchIntent != null) {
-                    startActivity(launchIntent)
-                }
-                binding.btnStop.isEnabled = true
-                binding.textStatus.text = getString(R.string.status_running)
-            } else {
-                binding.btnStart.isEnabled = true
-                binding.textStatus.text = "Screen capture permission denied"
-            }
-        }
+        screenCaptureLauncher.launch(mgr.createScreenCaptureIntent())
     }
 
     private fun onStopAssistant() {
@@ -151,7 +165,6 @@ class MainActivity : AppCompatActivity() {
             val startMs = System.currentTimeMillis()
             try {
                 withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
-                liteRTLMManager.startConversation()
                 val elapsed = System.currentTimeMillis() - startMs
                 Log.i(TAG, "Model loaded on ${liteRTLMManager.getActiveBackend()} in ${elapsed}ms")
                 binding.textBackendStatus.text =
