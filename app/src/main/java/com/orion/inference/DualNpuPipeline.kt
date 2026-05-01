@@ -124,7 +124,7 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
     }
 
     private suspend fun describeScreen(bitmap: Bitmap, eng: Engine): String {
-        val conv = eng.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95f, temperature = 0.2f)))
+        val conv = eng.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.2)))
         return try {
             val stream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
@@ -151,7 +151,7 @@ class DualNpuPipeline private constructor(private val context: Context) : Infere
     }
 
     private suspend fun sendTextMessage(prompt: String, eng: Engine): String {
-        val conv = eng.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95f, temperature = 0.2f)))
+        val conv = eng.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.2)))
         return try {
             suspendCancellableCoroutine { cont ->
                 val sb = StringBuilder()

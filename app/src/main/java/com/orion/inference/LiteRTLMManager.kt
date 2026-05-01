@@ -115,13 +115,13 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
 
     override suspend fun perceiveAndPlan(
         bitmap: Bitmap,
-        goal: String = "",
-        nodes: List<Pair<String, Rect>> = emptyList(),
-        screenWidth: Int = 0,
-        screenHeight: Int = 0,
-        appPackage: String = "",
-        retryContext: String = "",
-        previousAction: String = ""
+        goal: String,
+        nodes: List<Pair<String, Rect>>,
+        screenWidth: Int,
+        screenHeight: Int,
+        appPackage: String,
+        retryContext: String,
+        previousAction: String
     ): Pair<PerceptionResult, Plan> {
         val eng = engine ?: return fallback("engine_null")
         try {
