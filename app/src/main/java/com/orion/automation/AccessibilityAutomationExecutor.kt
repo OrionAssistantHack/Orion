@@ -99,6 +99,31 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
         return success
     }
 
+    fun typeText(nodeText: String, text: String): Boolean {
+        val root = service.rootInActiveWindow ?: return false
+        return try {
+            var candidates = root.findAccessibilityNodeInfosByText(nodeText)
+            if (candidates.isNullOrEmpty()) {
+                candidates = findNodesByTextDFS(root, nodeText)
+            }
+            if (candidates.isNullOrEmpty()) {
+                Log.w(TAG, "typeText: node not found for '$nodeText'")
+                return false
+            }
+            val node = candidates.firstOrNull { it.isEditable }
+                ?: candidates.firstOrNull { it.isClickable }
+                ?: candidates.first()
+            val args = android.os.Bundle()
+            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            val success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            candidates.forEach { it.recycle() }
+            Log.i(TAG, "typeText('$nodeText', '$text') → success=$success")
+            success
+        } finally {
+            root.recycle()
+        }
+    }
+
     override fun isScreenSecure(bitmap: Bitmap): Boolean {
         val cx = bitmap.width / 2
         val cy = bitmap.height / 2

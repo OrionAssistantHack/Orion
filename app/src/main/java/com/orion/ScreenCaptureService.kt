@@ -300,22 +300,16 @@ class ScreenCaptureService : Service() {
                                 }
                                 if (target != null) {
                                     if (action.type == "type_text" && action.text != null) {
-                                        val targetBounds = target.second
-                                        val serviceRoot = OrionAccessibilityService.instance?.rootInActiveWindow
-                                        val nodeInfo = serviceRoot?.let { root ->
-                                            findNodeByBounds(root, targetBounds)
-                                        }
-                                        serviceRoot?.recycle()
-                                        if (nodeInfo != null) {
+                                        val exec = OrionAccessibilityService.instance?.executor
+                                        val success = exec?.typeText(target.first, action.text) ?: false
+                                        if (success) {
                                             Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
-                                            OrionAccessibilityService.instance?.executor?.dispatchText(nodeInfo, action.text)
-                                            nodeInfo.recycle()
                                             lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
+                                            retryContext = ""
                                         } else {
-                                            Log.w(TAG, "type_text: could not find AccessibilityNodeInfo for '${target.first}'")
+                                            Log.w(TAG, "type_text failed for '${target.first}' — will retry")
                                         }
-                                        retryContext = ""
-                                        nodeInfo != null
+                                        success
                                     } else {
                                         val cx = target.second.centerX().toFloat()
                                         val cy = target.second.centerY().toFloat()
@@ -408,19 +402,6 @@ class ScreenCaptureService : Service() {
             child.recycle()
         }
         return parts.joinToString(" ")
-    }
-
-    private fun findNodeByBounds(node: AccessibilityNodeInfo, bounds: Rect): AccessibilityNodeInfo? {
-        val nodeBounds = Rect()
-        node.getBoundsInScreen(nodeBounds)
-        if (nodeBounds == bounds) return AccessibilityNodeInfo.obtain(node)
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val found = findNodeByBounds(child, bounds)
-            child.recycle()
-            if (found != null) return found
-        }
-        return null
     }
 
     private fun createNotificationChannel() {
