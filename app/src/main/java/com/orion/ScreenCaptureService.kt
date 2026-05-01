@@ -412,9 +412,9 @@ class ScreenCaptureService : Service() {
                                             targetApp = nextApp.packageName
                                             pendingGoal = buildComparisonGoal(session.parsedGoal)
                                             resetGoalState()
-                                            val intent = packageManager.getLaunchIntentForPackage(nextApp.packageName)
+                                            val intent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(nextApp.packageName)
                                                 ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            if (intent != null) startActivity(intent)
+                                            if (intent != null) this@ScreenCaptureService.startActivity(intent)
                                             else Log.w(TAG, "Comparison: ${nextApp.packageName} not installed — skipping")
                                         }
                                     }
