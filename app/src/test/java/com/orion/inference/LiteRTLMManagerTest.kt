@@ -11,7 +11,7 @@ class LiteRTLMManagerTest {
 
     @Test
     fun `parseResponse extracts tap_node action`() {
-        val raw = """{"screenPhase":"HOME","extractedData":{},"confidence":0.85,"summaryForUser":"Tapping Book","actions":[{"type":"tap_node","nodeIndex":2,"nodeText":"Book"}]}"""
+        val raw = """{"action":{"type":"tap_node","nodeIndex":2,"nodeText":"Book","text":null},"screenPhase":"HOME","extractedData":{},"confidence":0.85,"summaryForUser":"Tapping Book"}"""
         val (perception, plan) = LiteRTLMManager.parseResponse(raw)
         assertEquals(ScreenPhase.HOME, perception.screenPhase)
         assertEquals("Tapping Book", plan.summaryForUser)
@@ -22,7 +22,7 @@ class LiteRTLMManagerTest {
 
     @Test
     fun `parseResponse extracts type_text action`() {
-        val raw = """{"screenPhase":"SEARCH_INPUT","extractedData":{},"confidence":0.9,"summaryForUser":"Typing destination","actions":[{"type":"type_text","nodeIndex":1,"text":"JFK Airport"}]}"""
+        val raw = """{"action":{"type":"type_text","nodeIndex":1,"nodeText":"Where to?","text":"JFK Airport"},"screenPhase":"SEARCH_INPUT","extractedData":{},"confidence":0.9,"summaryForUser":"Typing destination"}"""
         val (_, plan) = LiteRTLMManager.parseResponse(raw)
         assertEquals("type_text", plan.actions[0].type)
         assertEquals("JFK Airport", plan.actions[0].text)
@@ -36,16 +36,15 @@ class LiteRTLMManagerTest {
     }
 
     @Test
-    fun `parseResponse handles multiple actions`() {
-        val raw = """{"screenPhase":"HOME","extractedData":{},"confidence":0.8,"summaryForUser":"Multi-step","actions":[{"type":"tap_node","nodeIndex":1,"nodeText":"Search"},{"type":"type_text","nodeIndex":2,"text":"Airport"},{"type":"tap_node","nodeIndex":4,"nodeText":"Go"}]}"""
+    fun `parseResponse treats none type as empty action`() {
+        val raw = """{"action":{"type":"none","nodeIndex":null,"nodeText":null,"text":null},"screenPhase":"UNKNOWN","extractedData":{},"confidence":0.5,"summaryForUser":"Waiting"}"""
         val (_, plan) = LiteRTLMManager.parseResponse(raw)
-        assertEquals(3, plan.actions.size)
-        assertEquals("Airport", plan.actions[1].text)
+        assertTrue(plan.actions.isEmpty())
     }
 
     @Test
     fun `parseResponse handles coordinate tap`() {
-        val raw = """{"screenPhase":"HOME","extractedData":{},"confidence":0.7,"summaryForUser":"Coordinate tap","actions":[{"type":"tap_node","x":540.0,"y":960.0}]}"""
+        val raw = """{"action":{"type":"tap_node","x":540.0,"y":960.0},"screenPhase":"HOME","extractedData":{},"confidence":0.7,"summaryForUser":"Coordinate tap"}"""
         val (_, plan) = LiteRTLMManager.parseResponse(raw)
         assertEquals(540f, plan.actions[0].x)
         assertEquals(960f, plan.actions[0].y)
@@ -53,7 +52,7 @@ class LiteRTLMManagerTest {
 
     @Test
     fun `parseResponse extracts confidence and extracted data`() {
-        val raw = """{"screenPhase":"FARE_ESTIMATE","extractedData":{"price":"$12.50","eta":"5 min"},"confidence":0.95,"summaryForUser":"Fare shown","actions":[]}"""
+        val raw = """{"action":{"type":"none"},"screenPhase":"FARE_ESTIMATE","extractedData":{"price":"$12.50","eta":"5 min"},"confidence":0.95,"summaryForUser":"Fare shown"}"""
         val (perception, plan) = LiteRTLMManager.parseResponse(raw)
         assertEquals(ScreenPhase.FARE_ESTIMATE, perception.screenPhase)
         assertEquals(0.95f, perception.confidence, 0.01f)

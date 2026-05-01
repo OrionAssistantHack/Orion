@@ -58,6 +58,7 @@ class ScreenCaptureService : Service() {
         var activeEngine: InferenceEngine? = null
 
         private const val MAX_TAP_RETRIES = 3
+        private const val MAX_UNCHANGED_FINGERPRINT_RETRIES = 3
 
         private var instance: WeakReference<ScreenCaptureService>? = null
 
@@ -108,6 +109,7 @@ class ScreenCaptureService : Service() {
     @Volatile private var retryContext = ""
     @Volatile private var lastSuccessfulAction = ""
     @Volatile private var lastNodeFingerprint: String = ""
+    @Volatile private var unchangedFingerprintCount: Int = 0
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -283,13 +285,18 @@ class ScreenCaptureService : Service() {
 
                     val fingerprint = nodes.joinToString("|") { it.first }
                     if (fingerprint == lastNodeFingerprint && lastSuccessfulAction.isNotBlank()) {
-                        bitmapForInference.recycle()
-                        inferenceActive.set(false)
-                        Log.d(TAG, "Node list unchanged after action — window still transitioning, retrying in 400ms")
-                        captureHandler.postDelayed({ captureFrame() }, 400L)
-                        return
+                        unchangedFingerprintCount++
+                        if (unchangedFingerprintCount <= MAX_UNCHANGED_FINGERPRINT_RETRIES) {
+                            bitmapForInference.recycle()
+                            inferenceActive.set(false)
+                            Log.d(TAG, "Node list unchanged after action — window still transitioning, retrying in 400ms ($unchangedFingerprintCount/$MAX_UNCHANGED_FINGERPRINT_RETRIES)")
+                            captureHandler.postDelayed({ captureFrame() }, 400L)
+                            return
+                        }
+                        Log.w(TAG, "Node list still unchanged after $MAX_UNCHANGED_FINGERPRINT_RETRIES retries — running inference on the new screenshot anyway (a11y tree may not reflect on-screen changes such as a keyboard overlay)")
                     }
                     lastNodeFingerprint = fingerprint
+                    unchangedFingerprintCount = 0
 
                     Log.d(TAG, "Collected ${nodes.size} clickable nodes")
 
