@@ -178,14 +178,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun findModelPath(): String? {
-        val candidates =
-                listOfNotNull(
-                        getExternalFilesDir(null)?.absolutePath?.let {
-                            "$it/gemma-4-E2B-it_qualcomm_sm8750.litertlm"
-                        },
-                        "/data/local/tmp/gemma-4-E2B-it_qualcomm_sm8750.litertlm"
-                )
-        return candidates.firstOrNull { java.io.File(it).exists() }
+        val searchDirs = listOfNotNull(
+            "/data/local/tmp",
+            getExternalFilesDir(null)?.absolutePath
+        )
+        val modelNames = listOf(
+            "gemma-4-E2B-it.litertlm",
+            "gemma-4-E2B-it_qualcomm_sm8750.litertlm"
+        )
+        for (name in modelNames) {
+            for (dir in searchDirs) {
+                val f = java.io.File(dir, name)
+                if (f.exists()) {
+                    Log.i(TAG, "Found model: ${f.absolutePath}")
+                    return f.absolutePath
+                }
+            }
+        }
+        return null
     }
 
     override fun onDestroy() {

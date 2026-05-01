@@ -278,7 +278,7 @@ class ScreenCaptureService : Service() {
                             val inferenceStartMs = System.currentTimeMillis()
                             val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, lastSuccessfulAction)
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
-                            Log.i(TAG, "Frame #$frameNum inference: ${elapsedMs}ms | phase=${perception.screenPhase} conf=${perception.confidence} | ${plan.summaryForUser}")
+                            Log.i(TAG, "Frame #$frameNum [${lm.getActiveBackend()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
                             Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
