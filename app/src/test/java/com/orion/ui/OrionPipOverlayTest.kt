@@ -1,5 +1,7 @@
 package com.orion.ui
 
+import android.app.Application
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -27,6 +29,11 @@ class OrionPipOverlayTest {
 
     @Test
     fun dismiss_setsIsShowingFalse() {
+        org.robolectric.shadows.ShadowSettings.setCanDrawOverlays(true)
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        OrionPipOverlay.show(context)
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+        assertTrue(OrionPipOverlay.isShowing)
         OrionPipOverlay.dismiss()
         assertFalse(OrionPipOverlay.isShowing)
     }
