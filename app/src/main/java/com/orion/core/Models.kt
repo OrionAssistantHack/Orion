@@ -6,21 +6,18 @@ data class ExecutionResult(
     val errorCode: String? = null
 )
 
-enum class ScreenPhase {
-    UNKNOWN, HOME, SEARCH_INPUT, FARE_ESTIMATE, CONFIRMATION
-}
+enum class OrionMode { IDLE, WATCHING, COMPARING, READY }
 
-data class TapTarget(
-    val nodeText: String,
-    val boundsHint: String? = null
-)
+enum class ScreenPhase { UNKNOWN, HOME, SEARCH_INPUT, FARE_ESTIMATE, CONFIRMATION }
+
+data class TapTarget(val nodeText: String, val boundsHint: List<Int>? = null)
 
 data class PerceptionResult(
     val screenPhase: ScreenPhase,
     val extractedData: Map<String, String>,
     val tapTarget: TapTarget?,
     val confidence: Float,
-    val rawDescription: String
+    val rawDescription: String,
 )
 
 data class PlanAction(
@@ -32,10 +29,7 @@ data class PlanAction(
     val text: String? = null,
     val app: String? = null,
     val fallbackUri: String? = null,
-    val waitForPhase: ScreenPhase? = null
+    val waitForPhase: String? = null,
 )
 
-data class Plan(
-    val summaryForUser: String,
-    val actions: List<PlanAction>
-)
+data class Plan(val summaryForUser: String, val actions: List<PlanAction>)
