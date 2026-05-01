@@ -22,4 +22,7 @@
     <string name="label_target_app">Target app: </string>
     <string name="btn_start">Use Assistant</string>
     <string name="btn_stop">Stop</string>
+    <string name="send_goal">Send goal</string>
+    <string name="label_your_goal">YOUR GOAL</string>
+    <string name="btn_stop_orion">Stop Orion</string>
 </resources>

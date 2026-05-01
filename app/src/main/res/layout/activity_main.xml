@@ -20,14 +20,15 @@
         <View
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:background="@drawable/bg_gradient_brand" />
+            android:background="@drawable/bg_gradient_brand"
+            android:importantForAccessibility="no" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="10dp"
-            android:text="Orion"
+            android:text="@string/app_name"
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@color/text_primary" />
@@ -106,7 +107,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="YOUR GOAL"
+                            android:text="@string/label_your_goal"
                             android:textSize="10sp"
                             android:letterSpacing="0.1"
                             android:textColor="@color/text_secondary"
@@ -127,9 +128,9 @@
                     style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Stop Orion"
-                    android:textColor="#DC2626"
-                    app:strokeColor="#FECACA" />
+                    android:text="@string/btn_stop_orion"
+                    android:textColor="@color/status_running_text"
+                    app:strokeColor="@color/status_running_bg" />
             </LinearLayout>
         </ScrollView>
     </FrameLayout>
@@ -170,7 +171,7 @@
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:background="@drawable/bg_gradient_brand"
-                android:text="→"
+                android:contentDescription="@string/send_goal"
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:padding="0dp" />
