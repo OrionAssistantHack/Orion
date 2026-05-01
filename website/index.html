@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orion — Your phone's autonomous agent</title>
+  <meta name="description" content="Orion is an on-device AI agent for Android. It captures the screen, reasons on the Qualcomm GPU with Gemma, and taps for you across Uber, Lyft, DoorDash and more — without your data ever leaving your phone." />
+
+  <link rel="icon" type="image/svg+xml" href="assets/orion-logo.svg" />
+  <link rel="apple-touch-icon" href="assets/orion-logo.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            brand: {
+              orange: '#F97316',
+              red: '#EF4444',
+              cream: '#FFF7ED',
+              peach: '#FEF3C7',
+              ink: '#1F1B16',
+              muted: '#6B7280',
+              ready: '#16A34A',
+              loading: '#D97706',
+              running: '#DC2626',
+            },
+          },
+          backgroundImage: {
+            'brand-gradient': 'linear-gradient(135deg, #F97316 0%, #EF4444 100%)',
+            'cream-gradient': 'linear-gradient(180deg, #FFF7ED 0%, #FEF3C7 100%)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="font-sans text-brand-ink bg-brand-cream antialiased">
+
+  <!-- ================== NAV ================== -->
+  <header class="sticky top-0 z-50 backdrop-blur bg-brand-cream/80 border-b border-black/5">
+    <nav class="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between">
+      <a href="#top" class="flex items-center gap-2.5">
+        <img src="assets/orion-logo.svg" alt="" class="brand-logo" />
+        <span class="font-bold tracking-tight">Orion</span>
+      </a>
+      <ul class="hidden md:flex items-center gap-7 text-sm text-brand-muted">
+        <li><a class="hover:text-brand-ink" href="#how">How it works</a></li>
+        <li><a class="hover:text-brand-ink" href="#use-cases">Use cases</a></li>
+        <li><a class="hover:text-brand-ink" href="#compare">Comparison</a></li>
+        <li><a class="hover:text-brand-ink" href="#privacy">Privacy</a></li>
+        <li><a class="hover:text-brand-ink" href="#stack">Stack</a></li>
+      </ul>
+      <a href="#demo" class="text-sm font-semibold px-4 py-2 rounded-full bg-brand-gradient text-white shadow-sm hover:shadow-md transition-shadow">See it run</a>
+    </nav>
+  </header>
+
+  <!-- ================== HERO ================== -->
+  <section id="top" class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-cream-gradient -z-10"></div>
+    <div class="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-brand-orange/20 blur-3xl -z-10"></div>
+    <div class="absolute -bottom-40 -left-32 w-96 h-96 rounded-full bg-brand-red/20 blur-3xl -z-10"></div>
+
+    <div class="max-w-6xl mx-auto px-5 pt-16 md:pt-24 pb-20 md:pb-28 grid md:grid-cols-2 gap-12 items-center">
+      <div>
+        <span class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full bg-white border border-black/5 text-brand-orange">
+          <span class="w-1.5 h-1.5 rounded-full bg-brand-orange animate-pulse"></span>
+          On-device · GPU-accelerated
+        </span>
+        <h1 class="mt-5 text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.05]">
+          Your phone's<br />
+          <span class="bg-brand-gradient bg-clip-text text-transparent">autonomous agent.</span>
+        </h1>
+        <p class="mt-5 text-lg md:text-xl text-brand-muted max-w-xl">
+          Orion captures the screen, reasons on the Qualcomm GPU with Gemma, and taps for you across Uber, Lyft, DoorDash and more. <strong class="text-brand-ink">Your data never leaves your phone.</strong>
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          <a href="#demo" class="px-5 py-3 rounded-full bg-brand-gradient text-white font-semibold shadow-md hover:shadow-lg transition-shadow">Watch the demo</a>
+          <a href="#how" class="px-5 py-3 rounded-full bg-white border border-black/10 font-semibold hover:border-black/20 transition-colors">How it works</a>
+        </div>
+        <div class="mt-8 flex items-center gap-5 text-sm text-brand-muted">
+          <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-brand-ready"></span>Ready</span>
+          <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-brand-running animate-pulse"></span>Working…</span>
+          <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-brand-loading"></span>Starting up…</span>
+        </div>
+      </div>
+
+      <!-- Phone mockup -->
+      <div class="relative mx-auto">
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <img src="assets/sc1.png" alt="Orion Command Center — typing a destination goal" class="phone-img" />
+          </div>
+          <!-- PIP overlay: Orion's floating circle -->
+          <div class="phone-pip" aria-label="Orion PIP overlay">
+            <span class="phone-pip-ring"></span>
+            <img src="assets/orion-logo.svg" alt="" class="phone-pip-core" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================== HOW IT WORKS ================== -->
+  <section id="how" class="py-20 md:py-28 bg-white">
+    <div class="max-w-6xl mx-auto px-5">
+      <div class="text-center max-w-2xl mx-auto reveal">
+        <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight">A perception–action loop, on a phone.</h2>
+        <p class="mt-4 text-brand-muted text-lg">Three stages run in tight loop until your goal is reached. No cloud round-trips.</p>
+      </div>
+
+      <div class="mt-14 grid md:grid-cols-3 gap-6 relative">
+        <div class="step-card reveal">
+          <div class="step-num">01</div>
+          <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3 class="step-title">Capture</h3>
+          <p class="step-body">MediaProjection grabs the current screen. Orion checks for FLAG_SECURE and skips sensitive surfaces automatically.</p>
+        </div>
+        <div class="step-card reveal" style="animation-delay:.1s">
+          <div class="step-num">02</div>
+          <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="4"/></svg></div>
+          <h3 class="step-title">Reason</h3>
+          <p class="step-body">Gemma runs on the Qualcomm GPU via LiteRT-LM. It reads the accessibility tree and decides the next tap or text input.</p>
+        </div>
+        <div class="step-card reveal" style="animation-delay:.2s">
+          <div class="step-num">03</div>
+          <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l5 5L20 7"/></svg></div>
+          <h3 class="step-title">Act</h3>
+          <p class="step-body">The Accessibility Service taps the right node or types the right text — and the loop runs again until the goal is done.</p>
+        </div>
+
+        <!-- Decorative connecting arrows (desktop only) — centered on icon row, in gap between cards -->
+        <svg class="step-arrow text-brand-orange/60" style="left:33.333%" viewBox="0 0 48 24" fill="none" aria-hidden="true"><path d="M2 12h40M36 4l8 8-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="step-arrow text-brand-red/60" style="left:66.666%" viewBox="0 0 48 24" fill="none" aria-hidden="true"><path d="M2 12h40M36 4l8 8-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <p class="mt-10 text-center text-sm text-brand-muted reveal">Per-frame latency: ~500–2500ms depending on device and backend.</p>
+    </div>
+  </section>
+
+  <!-- ================== USE CASES ================== -->
+  <section id="use-cases" class="py-20 md:py-28">
+    <div class="max-w-6xl mx-auto px-5">
+      <div class="text-center max-w-2xl mx-auto reveal">
+        <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight">Three modes. One agent.</h2>
+        <p class="mt-4 text-brand-muted text-lg">Tell Orion what you want. It picks the right app and gets it done.</p>
+      </div>
+
+      <div class="mt-12 reveal">
+        <div role="tablist" class="flex justify-center gap-2 p-1.5 rounded-full bg-white border border-black/5 w-max mx-auto shadow-sm">
+          <button role="tab" aria-selected="true" data-tab="rides" class="tab-btn tab-active">🚗 Rides</button>
+          <button role="tab" aria-selected="false" data-tab="food" class="tab-btn">🍕 Food</button>
+          <button role="tab" aria-selected="false" data-tab="anything" class="tab-btn">✨ Anything</button>
+        </div>
+
+        <div class="mt-10 grid md:grid-cols-2 gap-10 items-center">
+          <!-- Tab content -->
+          <div data-panel="rides" class="tab-panel">
+            <h3 class="text-2xl md:text-3xl font-bold tracking-tight">Find the cheapest ride — across every app at once.</h3>
+            <p class="mt-3 text-brand-muted">Orion opens Uber, Lyft and Waymo in turn, captures the live fare, then surfaces a comparison overlay you can tap to book.</p>
+            <ul class="mt-5 space-y-2 text-sm">
+              <li class="use-bullet">Uber · Lyft · Waymo</li>
+              <li class="use-bullet">Says "fastest" or "cheapest"? Orion sorts by your preference.</li>
+              <li class="use-bullet">Tap a row to commit — Orion finishes the booking.</li>
+            </ul>
+            <div class="mt-6 flex flex-wrap gap-2">
+              <span class="example-pill">"Find cheapest ride to SFO"</span>
+              <span class="example-pill">"Get me a quick ride downtown"</span>
+            </div>
+          </div>
+          <div data-panel="food" class="tab-panel hidden">
+            <h3 class="text-2xl md:text-3xl font-bold tracking-tight">Order food without thumbing through five apps.</h3>
+            <p class="mt-3 text-brand-muted">Tell Orion what you want. It searches DoorDash, Uber Eats, or Grubhub, finds the place, and picks the first matching result for you.</p>
+            <ul class="mt-5 space-y-2 text-sm">
+              <li class="use-bullet">DoorDash · Uber Eats · Grubhub</li>
+              <li class="use-bullet">Auto-selects the first matching search result.</li>
+              <li class="use-bullet">Recovers from typos and stale UI states automatically.</li>
+            </ul>
+            <div class="mt-6 flex flex-wrap gap-2">
+              <span class="example-pill">"Order a burger from Shake Shack"</span>
+              <span class="example-pill">"Get delivery from Chipotle"</span>
+            </div>
+          </div>
+          <div data-panel="anything" class="tab-panel hidden">
+            <h3 class="text-2xl md:text-3xl font-bold tracking-tight">Open Anything mode.</h3>
+            <p class="mt-3 text-brand-muted">Type any goal — banking transfers, shopping searches, flight bookings. Orion reads the screen of whichever app you're in and figures it out.</p>
+            <ul class="mt-5 space-y-2 text-sm">
+              <li class="use-bullet">Works in any installed app.</li>
+              <li class="use-bullet">Retries failed actions up to 3 times before backing off.</li>
+              <li class="use-bullet">Stops the moment the goal is reached.</li>
+            </ul>
+            <div class="mt-6 flex flex-wrap gap-2">
+              <span class="example-pill">"Help me book a flight to Tokyo"</span>
+              <span class="example-pill">"Transfer $200 to savings"</span>
+            </div>
+          </div>
+
+          <!-- Right side: in-action screenshot -->
+          <div class="phone-frame phone-frame-sm mx-auto">
+            <div class="phone-screen">
+              <img src="assets/sc2.png" alt="Orion auto-typing the destination into Lyft" class="phone-img" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================== COMPARISON OVERLAY DEMO ================== -->
+  <section id="compare" class="py-20 md:py-28 bg-white">
+    <div class="max-w-6xl mx-auto px-5 grid md:grid-cols-2 gap-14 items-center">
+      <div class="reveal">
+        <span class="text-xs font-semibold uppercase tracking-wider text-brand-orange">Hero feature</span>
+        <h2 class="mt-3 text-3xl md:text-5xl font-extrabold tracking-tight">One overlay. Every fare. Your call.</h2>
+        <p class="mt-4 text-brand-muted text-lg">Orion sweeps Uber, Lyft and Waymo, captures the live price, and shows you a single ranked panel. Pick the row — Orion finishes the booking.</p>
+        <ul class="mt-6 space-y-3 text-base">
+          <li class="flex gap-3"><span class="dot"></span>Real-time price + ETA from each app</li>
+          <li class="flex gap-3"><span class="dot"></span>"Cheapest" or "Fastest" badge based on your phrasing</li>
+          <li class="flex gap-3"><span class="dot"></span>One tap to commit — no more tab-juggling</li>
+        </ul>
+      </div>
+
+      <!-- Real comparison overlay screenshot -->
+      <div class="reveal">
+        <div class="phone-frame mx-auto">
+          <div class="phone-screen">
+            <img src="assets/sc4.png" alt="Orion comparison overlay showing Uber, Lyft and Waymo fares" class="phone-img phone-img-fit" />
+          </div>
+        </div>
+        <p class="mt-5 text-center text-xs text-brand-muted">Real overlay from the app — Uber wins on price, Lyft on ETA.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================== PRIVACY ================== -->
+  <section id="privacy" class="py-20 md:py-28">
+    <div class="max-w-6xl mx-auto px-5">
+      <div class="text-center max-w-2xl mx-auto reveal">
+        <span class="text-xs font-semibold uppercase tracking-wider text-brand-orange">Built private</span>
+        <h2 class="mt-3 text-3xl md:text-5xl font-extrabold tracking-tight">Your data never leaves your phone.</h2>
+        <p class="mt-4 text-brand-muted text-lg">Every screenshot, every inference step, every action — all on-device. No servers in the loop.</p>
+      </div>
+
+      <div class="mt-14 grid md:grid-cols-3 gap-6">
+        <div class="privacy-card reveal">
+          <div class="privacy-icon">🛡️</div>
+          <h3 class="privacy-title">No cloud uploads</h3>
+          <p class="privacy-body">Images are processed on-device by your phone's AI chip — never uploaded.</p>
+        </div>
+        <div class="privacy-card reveal" style="animation-delay:.1s">
+          <div class="privacy-icon">🔒</div>
+          <h3 class="privacy-title">Sensitive screens skipped</h3>
+          <p class="privacy-body">FLAG_SECURE detection means banking and password screens are automatically excluded from capture.</p>
+        </div>
+        <div class="privacy-card reveal" style="animation-delay:.2s">
+          <div class="privacy-icon">⚡</div>
+          <h3 class="privacy-title">GPU-local inference</h3>
+          <p class="privacy-body">Gemma runs on the Qualcomm GPU via LiteRT-LM. No network round-trips, no telemetry.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================== TECH STACK ================== -->
+  <section id="stack" class="py-20 md:py-28 bg-white">
+    <div class="max-w-6xl mx-auto px-5">
+      <div class="text-center max-w-2xl mx-auto reveal">
+        <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight">Under the hood.</h2>
+        <p class="mt-4 text-brand-muted text-lg">Hardware-accelerated on-device AI, paired with the Android primitives you already trust.</p>
+      </div>
+
+      <div class="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="stack-card reveal">
+          <div class="stack-tag">Model</div>
+          <div class="stack-name">Gemma 4</div>
+          <div class="stack-body">E2B and E4B variants, 4-bit quantized. Specialized build for Qualcomm sm8750.</div>
+        </div>
+        <div class="stack-card reveal">
+          <div class="stack-tag">Silicon</div>
+          <div class="stack-name">Qualcomm GPU</div>
+          <div class="stack-body">Snapdragon-class GPU runs Gemma directly on-device — no NPU required.</div>
+        </div>
+        <div class="stack-card reveal">
+          <div class="stack-tag">Runtime</div>
+          <div class="stack-name">LiteRT-LM</div>
+          <div class="stack-body">Google AI Edge runtime. topK=40, topP=0.95, temperature=0.2 for stable JSON output.</div>
+        </div>
+        <div class="stack-card reveal">
+          <div class="stack-tag">Perception</div>
+          <div class="stack-name">MediaProjection</div>
+          <div class="stack-body">Foreground service captures the screen each time the UI settles, then prunes old frames.</div>
+        </div>
+        <div class="stack-card reveal">
+          <div class="stack-tag">Action</div>
+          <div class="stack-name">Accessibility API</div>
+          <div class="stack-body">ACTION_CLICK on accessibility nodes, with gesture-based coordinate fallback when needed.</div>
+        </div>
+        <div class="stack-card reveal">
+          <div class="stack-tag">App</div>
+          <div class="stack-name">Kotlin · Material 3</div>
+          <div class="stack-body">Min SDK 24, target 36. arm64-v8a. View Binding. No Compose — fast cold start.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================== DEMO ================== -->
+  <section id="demo" class="py-20 md:py-28">
+    <div class="max-w-6xl mx-auto px-5 text-center">
+      <div class="reveal max-w-3xl mx-auto">
+        <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight">See Orion in action.</h2>
+        <p class="mt-4 text-brand-muted text-lg">A 60-second demo: type a goal, watch Orion comparison-shop your ride, then book it.</p>
+      </div>
+
+      <div class="mt-10 reveal">
+        <div class="demo-stage">
+          <div class="phone-frame">
+            <div class="phone-screen">
+              <img src="assets/sc3.png" alt="Orion selecting Priority Pickup in Lyft" class="phone-img phone-img-fit" />
+            </div>
+            <div class="phone-pip" aria-hidden="true">
+              <span class="phone-pip-ring"></span>
+              <span class="phone-pip-core">O</span>
+            </div>
+          </div>
+          <div class="demo-caption">
+            <div class="text-xs font-semibold uppercase tracking-wider text-brand-orange">Live capture</div>
+            <p class="mt-2">Orion picked the highlighted Priority Pickup automatically — no taps from you.</p>
+            <p class="mt-3">Watch it sweep three apps, surface the cheapest fare, then commit to the booking — all in under a minute.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-12 grid sm:grid-cols-3 gap-4 max-w-3xl mx-auto reveal">
+        <div class="install-step">
+          <div class="install-num">1</div>
+          <p>Install the APK on your Android device.</p>
+        </div>
+        <div class="install-step">
+          <div class="install-num">2</div>
+          <p>Grant accessibility, screen-capture and overlay permissions.</p>
+        </div>
+        <div class="install-step">
+          <div class="install-num">3</div>
+          <p>Type a goal. Watch Orion drive your favorite apps for you.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================== FOOTER ================== -->
+  <footer class="py-12 border-t border-black/5">
+    <div class="max-w-6xl mx-auto px-5 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-2.5">
+        <img src="assets/orion-logo.svg" alt="" class="brand-logo brand-logo-sm" />
+        <span class="text-sm text-brand-muted">Orion · built for the hackathon · 2026</span>
+      </div>
+      <div class="flex items-center gap-6 text-sm text-brand-muted">
+        <a class="hover:text-brand-ink" href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+        <a class="hover:text-brand-ink" href="#top">Back to top</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
