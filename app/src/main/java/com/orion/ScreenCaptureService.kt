@@ -268,6 +268,9 @@ class ScreenCaptureService : Service() {
                     }
                     Log.d(TAG, "Collected ${nodes.size} clickable nodes")
 
+                    Log.i(TAG, "=== AGENT CYCLE #$frameNum | goal='$pendingGoal' | backend=${lm.getActiveBackend()} ===")
+                    Log.i(TAG, "Nodes (${nodes.size}):\n" + nodes.mapIndexed { i, (text, _) -> "  [${i+1}] $text" }.joinToString("\n"))
+
                     val screenW = bitmapForInference.width
                     val screenH = bitmapForInference.height
                     inferenceScope.launch {
@@ -276,6 +279,8 @@ class ScreenCaptureService : Service() {
                             val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, lastSuccessfulAction)
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
                             Log.i(TAG, "Frame #$frameNum inference: ${elapsedMs}ms | phase=${perception.screenPhase} conf=${perception.confidence} | ${plan.summaryForUser}")
+                            Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
+                            Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
 
                             val actionExecuted = if (plan.actions.isNotEmpty()) {
@@ -325,9 +330,12 @@ class ScreenCaptureService : Service() {
                                         "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
                                         "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
                                     Log.w(TAG, "Tap resolution failed — nodeIdx=$nodeIdx nodeText=${action.nodeText}")
+                                    val nodeListStr = nodes.mapIndexed { i, (text, _) -> "[${i+1}] \"$text\"" }.joinToString(", ")
+                                    Log.w(TAG, "Resolution failed — available: $nodeListStr")
                                     false
                                 }
                             } else {
+                                Log.w(TAG, "Model returned empty actions — raw: ${perception.rawDescription.take(200)}")
                                 false
                             }
 

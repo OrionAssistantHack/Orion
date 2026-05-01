@@ -76,8 +76,10 @@ class LiteRTLMManager private constructor(private val context: Context) {
     @Volatile private var conversation: com.google.ai.edge.litertlm.Conversation? = null
     private var activeBackend: String = "None"
     @Volatile private var nativeLibsConfigured = false
+    private var lastModelPath: String? = null
 
     suspend fun initialize(modelPath: String) = withContext(Dispatchers.IO) {
+        lastModelPath = modelPath
         cleanup()
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         val backends = listOf(
@@ -128,6 +130,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         val imageBytes = stream.toByteArray()
+        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB image + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction).length}ch prompt)")
 
         return try {
             val response = suspendCancellableCoroutine { cont ->
@@ -146,8 +149,21 @@ class LiteRTLMManager private constructor(private val context: Context) {
                 )
                 cont.invokeOnCancellation { conv.cancelProcess() }
             }
+            Log.d(TAG, "Raw response (${response.length}ch): ${response.take(300)}")
             parseResponse(response)
         } catch (e: Exception) {
+            if (e.message?.contains("not implemented for backend") == true && activeBackend == "NPU") {
+                Log.w(TAG, "NPU vision unsupported — reinitializing on GPU/CPU and retrying")
+                val reinitialized = reinitializeWithoutNpu()
+                if (reinitialized) {
+                    return@withContext try {
+                        perceiveAndPlan(bitmap, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "perceiveAndPlan() failed after fallback", e2)
+                        fallback("error_after_fallback: ${e2.message}")
+                    }
+                }
+            }
             Log.e(TAG, "perceiveAndPlan() failed", e)
             fallback("error: ${e.message}")
         }
@@ -158,6 +174,24 @@ class LiteRTLMManager private constructor(private val context: Context) {
 
     private fun fallback(reason: String): Pair<PerceptionResult, Plan> =
         PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, reason) to Plan("", emptyList())
+
+    private suspend fun reinitializeWithoutNpu(): Boolean = withContext(Dispatchers.IO) {
+        Log.w(TAG, "NPU vision not supported — falling back to GPU/CPU")
+        try {
+            cleanup()
+            val nativeLibDir = context.applicationInfo.nativeLibraryDir
+            val gpuCpuBackends = listOf(
+                BackendFactory("GPU") { Backend.GPU() },
+                BackendFactory("CPU") { Backend.CPU() }
+            )
+            initializeWithFallback(lastModelPath ?: return@withContext false, gpuCpuBackends, nativeLibDir)
+            Log.i(TAG, "Fallback init succeeded on $activeBackend")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallback reinit failed: ${e.message}")
+            false
+        }
+    }
 
     private fun initializeWithFallback(
         modelPath: String,
