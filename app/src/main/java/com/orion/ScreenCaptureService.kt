@@ -130,6 +130,7 @@ class ScreenCaptureService : Service() {
                 lastNodeFingerprint = ""
                 thinNodeRetryCount = 0
                 postActionCooldownUntil = 0L
+                pendingAutoSelectText = null
             }
         }
 
@@ -153,6 +154,7 @@ class ScreenCaptureService : Service() {
     @Volatile private var unchangedFingerprintCount: Int = 0
     @Volatile private var thinNodeRetryCount: Int = 0
     @Volatile private var postActionCooldownUntil: Long = 0L
+    @Volatile private var pendingAutoSelectText: String? = null
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -363,6 +365,31 @@ class ScreenCaptureService : Service() {
                     Log.i(TAG, "=== AGENT CYCLE #$frameNum | goal='$pendingGoal' | backend=${lm.getDescription()} ===")
                     Log.i(TAG, "Nodes (${nodes.size}):\n" + nodes.mapIndexed { i, (text, _) -> "  [${i+1}] $text" }.joinToString("\n"))
 
+                    // Auto-select first matching search result after a successful type — skip model entirely.
+                    val typed = pendingAutoSelectText
+                    if (typed != null) {
+                        val firstWord = typed.split(Regex("\\s+")).firstOrNull { it.length >= 3 } ?: typed
+                        val match = nodes.firstOrNull { (text, _) ->
+                            !text.equals(typed, ignoreCase = true) && text.contains(firstWord, ignoreCase = true)
+                        }
+                        if (match != null) {
+                            Log.i(TAG, "Auto-selecting first matching result for typed '$typed' (matched on '$firstWord'): '${match.first}'")
+                            val cx = match.second.centerX().toFloat()
+                            val cy = match.second.centerY().toFloat()
+                            OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
+                            lastSuccessfulAction = "Auto-tapped '${match.first}' (matched typed text)"
+                            pendingAutoSelectText = null
+                            retryContext = ""
+                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                            bitmapForInference.recycle()
+                            inferenceActive.set(false)
+                            return
+                        } else {
+                            Log.w(TAG, "Auto-select: no node matching '$firstWord' found — falling through to model inference")
+                            pendingAutoSelectText = null
+                        }
+                    }
+
                     val screenW = bitmapForInference.width
                     val screenH = bitmapForInference.height
                     inferenceScope.launch {
@@ -470,6 +497,7 @@ class ScreenCaptureService : Service() {
                                             lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
                                             retryContext = ""
                                             postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                            pendingAutoSelectText = action.text
                                         } else {
                                             Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
                                             retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
