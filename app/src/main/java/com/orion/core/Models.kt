@@ -32,7 +32,7 @@ data class PlanAction(
     val waitForPhase: String? = null,
 )
 
-data class Plan(val summaryForUser: String, val actions: List<PlanAction>)
+data class Plan(val summaryForUser: String, val actions: List<PlanAction>, val goalReached: Boolean = false)
 
 enum class AppCategory { RIDES, FOOD_DELIVERY }
 

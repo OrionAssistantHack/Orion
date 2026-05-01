@@ -102,6 +102,7 @@ class ScreenCaptureService : Service() {
         }
 
         private const val MAX_TAP_RETRIES = 3
+        private const val CONSECUTIVE_NONE_THRESHOLD = 3
         private const val MAX_UNCHANGED_FINGERPRINT_RETRIES = 3
         private const val MIN_NODES_THRESHOLD = 5
         private const val MAX_THIN_NODE_RETRIES = 2
@@ -139,6 +140,7 @@ class ScreenCaptureService : Service() {
                 thinNodeRetryCount = 0
                 postActionCooldownUntil = 0L
                 pendingAutoSelectText = null
+                consecutiveNoneCount = 0
             }
         }
 
@@ -163,6 +165,7 @@ class ScreenCaptureService : Service() {
     @Volatile private var thinNodeRetryCount: Int = 0
     @Volatile private var postActionCooldownUntil: Long = 0L
     @Volatile private var pendingAutoSelectText: String? = null
+    @Volatile private var consecutiveNoneCount: Int = 0
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -484,6 +487,24 @@ class ScreenCaptureService : Service() {
                                     return@launch  // skip action execution — fare collected, session advanced
                                 }
                             }
+
+                            if (plan.goalReached && session == null) {
+                                consecutiveNoneCount++
+                                Log.i(TAG, "Goal-reached signal $consecutiveNoneCount/$CONSECUTIVE_NONE_THRESHOLD")
+                                if (consecutiveNoneCount >= CONSECUTIVE_NONE_THRESHOLD) {
+                                    Log.i(TAG, "Goal confirmed — stopping service")
+                                    onPlanResult?.let { cb ->
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                            cb(perception.rawDescription, plan)
+                                        }
+                                    }
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post { stopSelf() }
+                                } else {
+                                    captureHandler.postDelayed({ captureFrame() }, POST_ACTION_DELAY_MS)
+                                }
+                                return@launch
+                            }
+                            consecutiveNoneCount = 0
 
                             val actionExecuted = if (plan.actions.isNotEmpty()) {
                                 val action = plan.actions[0]

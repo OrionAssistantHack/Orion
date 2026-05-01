@@ -33,13 +33,15 @@ class LiteRTLMManagerTest {
     fun `parseResponse returns empty plan on malformed JSON`() {
         val (_, plan) = LiteRTLMManager.parseResponse("not json")
         assertTrue(plan.actions.isEmpty())
+        assertFalse(plan.goalReached)
     }
 
     @Test
-    fun `parseResponse treats none type as empty action`() {
+    fun `parseResponse treats none type as empty action with goalReached`() {
         val raw = """{"action":{"type":"none","nodeIndex":null,"nodeText":null,"text":null},"screenPhase":"UNKNOWN","extractedData":{},"confidence":0.5,"summaryForUser":"Waiting"}"""
         val (_, plan) = LiteRTLMManager.parseResponse(raw)
         assertTrue(plan.actions.isEmpty())
+        assertTrue(plan.goalReached)
     }
 
     @Test
@@ -58,5 +60,6 @@ class LiteRTLMManagerTest {
         assertEquals(0.95f, perception.confidence, 0.01f)
         assertEquals("$12.50", perception.extractedData["price"])
         assertTrue(plan.actions.isEmpty())
+        assertTrue(plan.goalReached)
     }
 }

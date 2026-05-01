@@ -321,6 +321,7 @@ private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
 
         val summary = obj.optString("summaryForUser", "")
         val actionObj = obj.optJSONObject("action")
+        val goalReached = actionObj != null && actionObj.optString("type", "").let { it == "none" || it.isEmpty() }
         val actions = if (actionObj != null) {
             val type = actionObj.optString("type", "none")
             if (type == "none" || type.isEmpty()) {
@@ -341,7 +342,7 @@ private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
         } else {
             emptyList()
         }
-        perception to Plan(summary, actions)
+        perception to Plan(summary, actions, goalReached)
     } catch (e: JSONException) {
         Log.w(TAG, "Failed to parse response JSON: $json")
         PerceptionResult(ScreenPhase.UNKNOWN, emptyMap(), null, 0f, raw) to Plan(raw.take(120), emptyList())
