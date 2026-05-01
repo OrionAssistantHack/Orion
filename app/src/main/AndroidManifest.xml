@@ -28,6 +28,7 @@
 
     <application
         android:name=".OrionApplication"
+        android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:label="@string/app_name"
         android:largeHeap="true"

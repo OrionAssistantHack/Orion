@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="crabBody" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="55%" stop-color="#DC2626"/>
+      <stop offset="100%" stop-color="#7F1D1D"/>
+    </radialGradient>
+    <radialGradient id="crabClaw" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="65%" stop-color="#DC2626"/>
+      <stop offset="100%" stop-color="#6C1818"/>
+    </radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Black background -->
+  <rect width="512" height="512" rx="64" ry="64" fill="#000000"/>
+
+  <!-- Stars -->
+  <g fill="#ffffff" opacity="0.35">
+    <circle cx="60" cy="80" r="1.2"/>
+    <circle cx="120" cy="40" r="0.8"/>
+    <circle cx="450" cy="70" r="1"/>
+    <circle cx="480" cy="140" r="1.4"/>
+    <circle cx="40" cy="200" r="0.9"/>
+    <circle cx="470" cy="430" r="1.1"/>
+    <circle cx="80" cy="460" r="0.8"/>
+    <circle cx="380" cy="40" r="0.7"/>
+    <circle cx="200" cy="30" r="0.9"/>
+    <circle cx="320" cy="480" r="1"/>
+  </g>
+
+  <!-- Crab + O group, shifted up to better center the composition -->
+  <g transform="translate(0 -36)">
+
+  <!-- Legs (back, drawn first so they appear behind body) -->
+  <g stroke="url(#crabClaw)" stroke-width="13" stroke-linecap="round" fill="none">
+    <!-- Left side legs -->
+    <path d="M 130 360 Q 60 360 25 405"/>
+    <path d="M 125 395 Q 50 415 25 470"/>
+    <path d="M 145 425 Q 95 460 90 495"/>
+    <!-- Right side legs -->
+    <path d="M 382 360 Q 452 360 487 405"/>
+    <path d="M 387 395 Q 462 415 487 470"/>
+    <path d="M 367 425 Q 417 460 422 495"/>
+  </g>
+
+  <!-- Arms (behind body & jaws) -->
+  <!-- Left arm: from body up to lower-left grab point -->
+  <path d="M 150 335 Q 100 275 155 220"
+        stroke="url(#crabClaw)" stroke-width="22" stroke-linecap="round" fill="none"/>
+  <!-- Right arm: reaches higher, up to upper-right grab point -->
+  <path d="M 362 335 Q 420 210 370 145"
+        stroke="url(#crabClaw)" stroke-width="22" stroke-linecap="round" fill="none"/>
+
+  <!-- Body / shell - WIDE flattened oval -->
+  <path d="M 256 305
+           C 388 305, 416 350, 414 388
+           C 412 425, 360 450, 256 450
+           C 152 450, 100 425, 98 388
+           C 96 350, 124 305, 256 305 Z"
+        fill="url(#crabBody)" stroke="#4A0E0A" stroke-width="3"/>
+
+  <!-- Shell highlights -->
+  <path d="M 175 350 Q 256 325 337 350"
+        stroke="#FCA5A5" stroke-width="3" fill="none" opacity="0.7"/>
+  <path d="M 162 388 Q 256 365 350 388"
+        stroke="#FCA5A5" stroke-width="2" fill="none" opacity="0.5"/>
+
+  <!-- Eyes (stalks) -->
+  <line x1="226" y1="318" x2="220" y2="282" stroke="#4A0E0A" stroke-width="4" stroke-linecap="round"/>
+  <line x1="286" y1="318" x2="292" y2="282" stroke="#4A0E0A" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="220" cy="278" r="9" fill="#ffffff" stroke="#4A0E0A" stroke-width="2"/>
+  <circle cx="292" cy="278" r="9" fill="#ffffff" stroke="#4A0E0A" stroke-width="2"/>
+  <circle cx="220" cy="278" r="4" fill="#000000"/>
+  <circle cx="292" cy="278" r="4" fill="#000000"/>
+  <circle cx="222" cy="276" r="1.5" fill="#ffffff"/>
+  <circle cx="294" cy="276" r="1.5" fill="#ffffff"/>
+
+  <!-- Mouth -->
+  <path d="M 240 415 Q 256 425 272 415" stroke="#4A0E0A" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+  <!-- ===== Left claw LOWER jaw (behind the O ring) ===== -->
+  <g transform="translate(155 220) rotate(-40)">
+    <path d="M 0 0
+             Q -25 8 -32 28
+             Q -22 50 10 48
+             Q 45 38 60 12
+             Q 50 -2 0 0 Z"
+          fill="url(#crabClaw)" stroke="#4A0E0A" stroke-width="2"/>
+  </g>
+
+  <!-- ===== Right claw LOWER jaw (behind the O ring) ===== -->
+  <g transform="translate(370 145) rotate(140)">
+    <path d="M 0 0
+             Q -25 8 -32 28
+             Q -22 50 10 48
+             Q 45 38 60 12
+             Q 50 -2 0 0 Z"
+          fill="url(#crabClaw)" stroke="#4A0E0A" stroke-width="2"/>
+  </g>
+
+  <!-- ===== THE O — tilted ellipse, white ===== -->
+  <g filter="url(#glow)" transform="rotate(-18 256 165)">
+    <ellipse cx="256" cy="165" rx="92" ry="82"
+             fill="none" stroke="#ffffff" stroke-width="18"/>
+  </g>
+
+  <!-- ===== Left claw UPPER jaw (IN FRONT of the O — clamping illusion) ===== -->
+  <g transform="translate(155 220) rotate(-40)">
+    <path d="M 0 0
+             Q -25 -10 -30 -32
+             Q -18 -52 14 -48
+             Q 48 -36 62 -10
+             Q 50 4 0 0 Z"
+          fill="url(#crabClaw)" stroke="#4A0E0A" stroke-width="2"/>
+    <!-- Knuckle highlight -->
+    <path d="M -10 -28 Q 10 -38 35 -32"
+          stroke="#FCA5A5" stroke-width="2" fill="none" opacity="0.6"/>
+  </g>
+
+  <!-- ===== Right claw UPPER jaw (IN FRONT of the O — clamping illusion) ===== -->
+  <g transform="translate(370 145) rotate(140)">
+    <path d="M 0 0
+             Q -25 -10 -30 -32
+             Q -18 -52 14 -48
+             Q 48 -36 62 -10
+             Q 50 4 0 0 Z"
+          fill="url(#crabClaw)" stroke="#4A0E0A" stroke-width="2"/>
+    <path d="M -10 -28 Q 10 -38 35 -32"
+          stroke="#FCA5A5" stroke-width="2" fill="none" opacity="0.6"/>
+  </g>
+
+  </g>
+</svg>

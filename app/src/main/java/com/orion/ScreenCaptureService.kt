@@ -748,7 +748,7 @@ class ScreenCaptureService : Service() {
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Orion")
             .setContentText("Screen capture active")
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
             .build()
 
