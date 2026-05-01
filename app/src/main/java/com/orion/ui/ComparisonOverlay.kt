@@ -80,7 +80,6 @@ object ComparisonOverlay {
             setBackgroundColor(0xFFFFFFFF.toInt())
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
-                    // Extend bottom past view.height so bottom corners are clipped away, leaving only top corners rounded
                     outline.setRoundRect(0, 0, view.width, view.height + (24 * dp).toInt(), 24 * dp)
                 }
             }
@@ -118,7 +117,6 @@ object ComparisonOverlay {
             ).apply { bottomMargin = (4 * dp).toInt() }
         })
 
-        // Subtitle
         root.addView(TextView(context).apply {
             text = "Orion compared ${session.collectedFares.size} apps for you"
             setTextColor(0xFF6B7280.toInt())
@@ -131,30 +129,64 @@ object ComparisonOverlay {
 
         val cheapest = session.cheapestApp
         val fastest = session.fastestApp
-        val preference = when (session.parsedGoal) {
-            is ParsedGoal.RideRequest -> session.parsedGoal.preference
-            is ParsedGoal.FoodOrder -> session.parsedGoal.preference
+        val preference = when (val g = session.parsedGoal) {
+            is ParsedGoal.RideRequest -> g.preference
+            is ParsedGoal.FoodOrder -> g.preference
         }
         val preferredApp = when (preference) {
             Preference.FASTEST -> fastest ?: cheapest
             else -> cheapest
         }
+        val initialSelection = preferredApp
+            ?: session.apps.firstOrNull { session.collectedFares.containsKey(it.packageName) }
+            ?: return root
 
-        // Result rows — each row is tappable to book that app
+        // Per-row state needed for selection updates
+        data class RowEntry(val app: KnownApp, val bg: GradientDrawable)
+        val rowEntries = mutableListOf<RowEntry>()
+
+        // CTA button — declared before rows so select() can reference it
+        val ctaButton = Button(context).apply {
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.bg_gradient_brand)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (16 * dp).toInt()
+                bottomMargin = (8 * dp).toInt()
+            }
+        }
+
+        fun ctaLabel(app: KnownApp) = when (preference) {
+            Preference.FASTEST -> "Book fastest — ${app.displayName} →"
+            Preference.CHEAPEST -> "Book cheapest — ${app.displayName} →"
+            Preference.NONE -> "Book with ${app.displayName} →"
+        }
+
+        fun select(app: KnownApp) {
+            for ((rowApp, bg) in rowEntries) {
+                val selected = rowApp == app
+                bg.setColor(if (selected) 0xFFF0FDF4.toInt() else 0xFFF9FAFB.toInt())
+                bg.setStroke(if (selected) (1 * dp).toInt() else 0, 0xFFBBF7D0.toInt())
+            }
+            ctaButton.text = ctaLabel(app)
+            ctaButton.setOnClickListener { dismiss(); onBook(app) }
+        }
+
+        // Build rows
         for ((pkg, fare) in session.collectedFares) {
             val app = session.apps.firstOrNull { it.packageName == pkg } ?: continue
             val isCheapest = app == cheapest
             val isFastest = app == fastest && fastest != cheapest
-            val isPreferred = app == preferredApp
+
+            val rowBg = GradientDrawable().apply { cornerRadius = 10 * dp }
+            rowEntries.add(RowEntry(app, rowBg))
 
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                background = GradientDrawable().apply {
-                    setColor(if (isPreferred) 0xFFF0FDF4.toInt() else 0xFFF9FAFB.toInt())
-                    if (isPreferred) setStroke((1 * dp).toInt(), 0xFFBBF7D0.toInt())
-                    cornerRadius = 10 * dp
-                }
+                background = rowBg
                 val p = (12 * dp).toInt()
                 setPadding(p, p, p, p)
                 layoutParams = LinearLayout.LayoutParams(
@@ -163,7 +195,7 @@ object ComparisonOverlay {
                 ).apply { bottomMargin = (8 * dp).toInt() }
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { dismiss(); onBook(app) }
+                setOnClickListener { select(app) }
             }
 
             val leftCol = LinearLayout(context).apply {
@@ -176,7 +208,6 @@ object ComparisonOverlay {
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
             })
-            // Always show cheapest/fastest badges; preferred one shown in bold color
             if (isCheapest) {
                 leftCol.addView(TextView(context).apply {
                     text = "✓ CHEAPEST"
@@ -214,40 +245,14 @@ object ComparisonOverlay {
                     gravity = Gravity.END
                 })
             }
-            rightCol.addView(TextView(context).apply {
-                text = "Book →"
-                setTextColor(if (isPreferred) 0xFF16A34A.toInt() else 0xFFF97316.toInt())
-                textSize = 12f
-                setTypeface(null, Typeface.BOLD)
-                gravity = Gravity.END
-            })
             row.addView(rightCol)
             root.addView(row)
         }
 
-        // Primary CTA — book the preferred app (fastest or cheapest based on user intent)
-        val bookTarget = preferredApp
-            ?: session.apps.firstOrNull { session.collectedFares.containsKey(it.packageName) }
-        if (bookTarget != null) {
-            val ctaLabel = when (preference) {
-                Preference.FASTEST -> "Book fastest — ${bookTarget.displayName} →"
-                Preference.CHEAPEST -> "Book cheapest — ${bookTarget.displayName} →"
-                Preference.NONE -> "Book with ${bookTarget.displayName} →"
-            }
-            root.addView(Button(context).apply {
-                text = ctaLabel
-                setTextColor(0xFFFFFFFF.toInt())
-                setBackgroundResource(R.drawable.bg_gradient_brand)
-                setOnClickListener { dismiss(); onBook(bookTarget) }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = (16 * dp).toInt()
-                    bottomMargin = (8 * dp).toInt()
-                }
-            })
-        }
+        // Apply initial selection (preferred app pre-selected)
+        select(initialSelection)
+
+        root.addView(ctaButton)
 
         // Dismiss link
         root.addView(TextView(context).apply {
