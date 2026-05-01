@@ -15,6 +15,7 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.orion.databinding.ActivityMainBinding
 import com.orion.inference.DualNpuPipeline
+import com.orion.inference.GemmaNpuEngine
 import com.orion.inference.LiteRTLMManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var liteRTLMManager: LiteRTLMManager
 
     private var selectedPackage = "com.ubercab"
-    private var selectedMode = "gpu"  // "gpu" or "npu"
+    private var selectedMode = "npu_gemma"
 
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -100,8 +101,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupModeSelector() {
-        val modes = listOf("Gemma GPU" to "gpu", "NPU Pipeline" to "npu")
-        for ((label, mode) in modes) {
+        val modes = listOf(
+            Triple("Gemma NPU", "npu_gemma", true),
+            Triple("Gemma GPU", "gpu", false),
+            Triple("NPU Pipeline", "npu_pipeline", false)
+        )
+        for ((label, mode, _) in modes) {
             val btn = Button(this).apply {
                 text = label
                 setOnClickListener {
@@ -118,15 +123,9 @@ class MainActivity : AppCompatActivity() {
     private fun switchInferenceMode() {
         binding.btnStart.isEnabled = false
         binding.textStatus.text = "Unloading current model…"
-
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {
-                val current = ScreenCaptureService.activeEngine
-                if (current is DualNpuPipeline) {
-                    current.cleanup()
-                } else {
-                    liteRTLMManager.cleanup()
-                }
+                ScreenCaptureService.activeEngine?.cleanup()
                 ScreenCaptureService.activeEngine = null
                 System.gc()
                 kotlinx.coroutines.delay(500)
@@ -193,8 +192,11 @@ class MainActivity : AppCompatActivity() {
 
         // Reuse if already ready on the same mode
         val existingEngine = ScreenCaptureService.activeEngine
-        val engineMatchesMode = (selectedMode == "gpu" && existingEngine is LiteRTLMManager)
-            || (selectedMode == "npu" && existingEngine is DualNpuPipeline)
+        val engineMatchesMode = when (selectedMode) {
+            "npu_gemma" -> existingEngine is GemmaNpuEngine
+            "npu_pipeline" -> existingEngine is DualNpuPipeline
+            else -> existingEngine is LiteRTLMManager
+        }
         if (existingEngine != null && existingEngine.isReady() && engineMatchesMode) {
             binding.textBackendStatus.text = existingEngine.getDescription()
             binding.textStatus.text = getString(R.string.status_ready)
@@ -206,24 +208,37 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val startMs = System.currentTimeMillis()
             try {
-                if (selectedMode == "npu") {
-                    val fastVlmPath = findModelByName(DualNpuPipeline.FASTVLM_MODEL)
-                    val gemmaNpuPath = findModelByName(DualNpuPipeline.GEMMA_NPU_MODEL)
-                    if (fastVlmPath == null || gemmaNpuPath == null) {
-                        binding.textStatus.text = "NPU models not found in /data/local/tmp"
-                        return@launch
+                when (selectedMode) {
+                    "npu_gemma" -> {
+                        val modelPath = findModelByName(GemmaNpuEngine.MODEL_FILENAME)
+                            ?: run { binding.textStatus.text = "Gemma NPU model not found"; return@launch }
+                        val engine = GemmaNpuEngine.getInstance(this@MainActivity)
+                        withContext(Dispatchers.IO) { engine.initialize(modelPath) }
+                        if (!engine.isReady()) {
+                            binding.textStatus.text = "Gemma NPU init failed — check logcat"
+                            return@launch
+                        }
+                        ScreenCaptureService.activeEngine = engine
                     }
-                    val pipeline = DualNpuPipeline.getInstance(this@MainActivity)
-                    withContext(Dispatchers.IO) { pipeline.initialize(fastVlmPath, gemmaNpuPath) }
-                    if (!pipeline.isReady()) {
-                        binding.textStatus.text = "NPU pipeline init failed — check logcat"
-                        return@launch
+                    "npu_pipeline" -> {
+                        val fastVlmPath = findModelByName(DualNpuPipeline.FASTVLM_MODEL)
+                        val gemmaNpuPath = findModelByName(DualNpuPipeline.GEMMA_NPU_MODEL)
+                        if (fastVlmPath == null || gemmaNpuPath == null) {
+                            binding.textStatus.text = "NPU models not found in /data/local/tmp"
+                            return@launch
+                        }
+                        val pipeline = DualNpuPipeline.getInstance(this@MainActivity)
+                        withContext(Dispatchers.IO) { pipeline.initialize(fastVlmPath, gemmaNpuPath) }
+                        if (!pipeline.isReady()) {
+                            binding.textStatus.text = "NPU pipeline init failed — check logcat"
+                            return@launch
+                        }
+                        ScreenCaptureService.activeEngine = pipeline
                     }
-                    ScreenCaptureService.activeEngine = pipeline
-                } else {
-                    val lm = liteRTLMManager
-                    withContext(Dispatchers.IO) { lm.initialize(modelPath) }
-                    ScreenCaptureService.activeEngine = lm
+                    else -> { // "gpu"
+                        withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
+                        ScreenCaptureService.activeEngine = liteRTLMManager
+                    }
                 }
                 val engine = ScreenCaptureService.activeEngine ?: return@launch
                 val elapsed = System.currentTimeMillis() - startMs
@@ -266,11 +281,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
-        liteRTLMManager.cleanup()
-        if (ScreenCaptureService.activeEngine is DualNpuPipeline) {
-            ScreenCaptureService.activeEngine?.cleanup()
-        }
+        ScreenCaptureService.activeEngine?.cleanup()
         ScreenCaptureService.activeEngine = null
+        liteRTLMManager.cleanup()
         super.onDestroy()
     }
 }
