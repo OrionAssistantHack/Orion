@@ -85,6 +85,7 @@ class ScreenCaptureService : Service() {
                 retryCount = 0
                 retryContext = ""
                 lastSuccessfulAction = ""
+                lastNodeFingerprint = ""
             }
         }
 
@@ -104,6 +105,7 @@ class ScreenCaptureService : Service() {
     @Volatile private var retryCount = 0
     @Volatile private var retryContext = ""
     @Volatile private var lastSuccessfulAction = ""
+    @Volatile private var lastNodeFingerprint: String = ""
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -267,6 +269,26 @@ class ScreenCaptureService : Service() {
                         captureHandler.postDelayed({ captureFrame() }, 800L)
                         return
                     }
+
+                    val rootPkg = OrionAccessibilityService.instance?.rootInActiveWindow?.also { it.recycle() }?.packageName?.toString()
+                    if (targetApp.isNotBlank() && rootPkg != null && rootPkg != targetApp) {
+                        bitmapForInference.recycle()
+                        inferenceActive.set(false)
+                        Log.d(TAG, "Root window is '$rootPkg', not '$targetApp' — window still transitioning, retrying in 400ms")
+                        captureHandler.postDelayed({ captureFrame() }, 400L)
+                        return
+                    }
+
+                    val fingerprint = nodes.joinToString("|") { it.first }
+                    if (fingerprint == lastNodeFingerprint && lastSuccessfulAction.isNotBlank()) {
+                        bitmapForInference.recycle()
+                        inferenceActive.set(false)
+                        Log.d(TAG, "Node list unchanged after action — window still transitioning, retrying in 400ms")
+                        captureHandler.postDelayed({ captureFrame() }, 400L)
+                        return
+                    }
+                    lastNodeFingerprint = fingerprint
+
                     Log.d(TAG, "Collected ${nodes.size} clickable nodes")
 
                     Log.i(TAG, "=== AGENT CYCLE #$frameNum | goal='$pendingGoal' | backend=${lm.getActiveBackend()} ===")
