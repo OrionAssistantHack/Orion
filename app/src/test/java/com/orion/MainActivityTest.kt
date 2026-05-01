@@ -104,4 +104,25 @@ class MainActivityTest {
             }
         }
     }
+
+    @Test
+    fun selectCategory_food_updatesSelectedCategory() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.selectCategory("food")
+                assertEquals("food", activity.selectedCategory)
+            }
+        }
+    }
+
+    @Test
+    fun selectCategory_rides_afterFood_restoresCategory() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.selectCategory("food")
+                activity.selectCategory("rides")
+                assertEquals("rides", activity.selectedCategory)
+            }
+        }
+    }
 }

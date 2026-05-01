@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
                 ) { chosenApp ->
                     runOnUiThread {
                         OrionPipOverlay.dismiss()
+                        pendingComparisonGoal = null
                         selectedPackage = chosenApp.packageName
                         binding.editGoal.setText("Complete the booking")
                         requestScreenCapture()
@@ -80,6 +81,7 @@ class MainActivity : AppCompatActivity() {
                     ?.let { startActivity(it) }
                 OrionPipOverlay.show(this)
                 setStatusPill("running")
+                showRunningState(pending.rawGoal)
             } else {
                 val goal = binding.editGoal.text.toString().trim()
                 ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
@@ -130,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         for ((key, label) in tabs) {
             val btn = Button(this).apply {
                 text = label
+                tag = key
                 textSize = 12f
                 isAllCaps = false
                 layoutParams = LinearLayout.LayoutParams(
@@ -143,11 +146,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun selectCategory(key: String) {
+    internal fun selectCategory(key: String) {
         selectedCategory = key
         for (i in 0 until binding.layoutCategoryTabs.childCount) {
             val btn = binding.layoutCategoryTabs.getChildAt(i) as? Button ?: continue
-            val tabKey = if (btn.text == "Rides") "rides" else "food"
+            val tabKey = btn.tag as? String ?: continue
             updateTabStyle(btn, tabKey == key)
         }
         buildPresetCards()
