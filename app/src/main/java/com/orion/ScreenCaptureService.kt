@@ -409,7 +409,7 @@ class ScreenCaptureService : Service() {
                             val session = comparisonSession
                             if (session != null && !session.isComplete) {
                                 val price = perception.extractedData["price"]
-                                    ?.takeIf { it.isNotBlank() && it != "null" }
+                                    ?.takeIf { p -> p.isNotBlank() && p != "null" && p.any { it.isDigit() } }
                                 if (price != null) {
                                     val eta = perception.extractedData["eta"]
                                         ?.replace(Regex("[^0-9]"), "")
@@ -433,6 +433,7 @@ class ScreenCaptureService : Service() {
                                             ) { chosenApp ->
                                                 onBookingChosen?.invoke(chosenApp)
                                             }
+                                            stopSelf()
                                         }
                                     } else {
                                         val nextApp = session.currentApp
@@ -455,6 +456,7 @@ class ScreenCaptureService : Service() {
                                                         com.orion.ui.ComparisonOverlay.show(this@ScreenCaptureService, capturedSession2) { chosenApp ->
                                                             onBookingChosen?.invoke(chosenApp)
                                                         }
+                                                        stopSelf()
                                                     }
                                                 } else {
                                                     val skippedTo = session.currentApp
