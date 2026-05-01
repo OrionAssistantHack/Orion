@@ -18,6 +18,8 @@ class OrionAccessibilityService : AccessibilityService() {
         private const val TAG = "Orion.A11y"
         private const val DEBOUNCE_MS = 700L
         private const val MAX_WAIT_MS = 3000L
+        // Packages we never treat as a target. System UI noise + ourselves.
+        private val IGNORED_PACKAGES = setOf("com.android.systemui", "android", "com.orion")
         private val WATCHED_PACKAGES = setOf(
             "com.ubercab",
             "com.lyft.android",
@@ -52,8 +54,13 @@ class OrionAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         currentPackage = pkg
-        if (pkg !in SYSTEM_PACKAGES) lastAppPackage = pkg
-        if (pkg !in WATCHED_PACKAGES) return
+        if (pkg in IGNORED_PACKAGES) return
+        lastAppPackage = pkg
+
+        // Pin to target if one was set (Uber/Lyft/comparison mode). If target is blank,
+        // we're in "Open anything" mode — accept events from any non-system app.
+        val target = ScreenCaptureService.targetApp
+        if (target.isNotBlank() && pkg != target) return
 
         val eventType = event.eventType
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&

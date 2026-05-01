@@ -82,11 +82,14 @@ class MainActivity : AppCompatActivity() {
                 setStatusPill("running")
                 showRunningState(pending.rawGoal)
             } else {
+                // "Open anything" mode (selectedPackage blank): don't launch any app; agent attaches to whatever the user opens.
                 val goal = binding.editGoal.text.toString().trim()
                 ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
-                packageManager.getLaunchIntentForPackage(selectedPackage)
-                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    ?.let { startActivity(it) }
+                if (selectedPackage.isNotBlank()) {
+                    packageManager.getLaunchIntentForPackage(selectedPackage)
+                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ?.let { startActivity(it) }
+                }
                 OrionPipOverlay.show(this)
                 setStatusPill("running")
                 showRunningState(goal)
@@ -279,8 +282,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (packageManager.getLaunchIntentForPackage(selectedPackage) == null) return
-
+        // "Open anything" mode: selectedPackage is blank; skip the launch-intent check.
+        if (selectedPackage.isNotBlank() && packageManager.getLaunchIntentForPackage(selectedPackage) == null) return
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
