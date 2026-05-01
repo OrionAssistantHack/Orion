@@ -66,14 +66,19 @@ class MainActivity : AppCompatActivity() {
                 binding.btnStop.isEnabled = true
                 binding.textStatus.text = "Comparing across ${installedApps.size} apps…"
             } else {
-                // Single-app mode — existing logic unchanged
+                // Single-app mode — existing logic unchanged.
+                // "Open anything" mode (selectedPackage blank): don't launch any app; agent attaches to whatever the user opens.
                 val goal = binding.editGoal.text.toString().trim()
                 ScreenCaptureService.startCapture(this, result.resultCode, result.data!!, goal, selectedPackage)
-                packageManager.getLaunchIntentForPackage(selectedPackage)
-                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    ?.let { startActivity(it) }
+                if (selectedPackage.isNotBlank()) {
+                    packageManager.getLaunchIntentForPackage(selectedPackage)
+                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ?.let { startActivity(it) }
+                    binding.textStatus.text = getString(R.string.status_running)
+                } else {
+                    binding.textStatus.text = "Open the app you want help with — agent will attach"
+                }
                 binding.btnStop.isEnabled = true
-                binding.textStatus.text = getString(R.string.status_running)
             }
             binding.btnStart.isEnabled = false
         } else {
@@ -132,6 +137,15 @@ class MainActivity : AppCompatActivity() {
                     }
             binding.layoutAppSelector.addView(btn)
         }
+        val openAnythingBtn = Button(this).apply {
+            text = "Open anything"
+            setOnClickListener {
+                selectedPackage = ""
+                binding.textTargetApp.text =
+                        getString(R.string.label_target_app) + "(open the app yourself after Start)"
+            }
+        }
+        binding.layoutAppSelector.addView(openAnythingBtn)
     }
 
     private fun setupModeSelector() {
@@ -192,8 +206,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Single-app mode — existing flow unchanged
-        if (packageManager.getLaunchIntentForPackage(selectedPackage) == null) {
+        // Single-app mode — existing flow unchanged.
+        // "Open anything" mode: selectedPackage is blank; skip the launch-intent check.
+        if (selectedPackage.isNotBlank() && packageManager.getLaunchIntentForPackage(selectedPackage) == null) {
             binding.textStatus.text = "App not found: $selectedPackage"
             return
         }
