@@ -65,8 +65,8 @@ Orion is an Android application targeting devices with a Qualcomm Snapdragon NPU
 2. **Install the Android SDK + platform tools.** Either install Android Studio, or install the command-line tools and run `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"`. Set `ANDROID_HOME` to your SDK root (e.g. `~/Android/Sdk`).
 3. **Clone this repository.**
    ```bash
-   git clone https://github.com/OrionAssistantHack/agent-poc.git
-   cd agent-poc
+   git clone https://github.com/OrionAssistantHack/Orion.git
+   cd Orion
    ```
 4. **Connect a Snapdragon Android device** with USB debugging enabled (`adb devices` should list it), or boot a compatible emulator. Note: a non-Snapdragon device or generic emulator can install the app and exercise the UI, but the on-device Gemma engine will not run — Orion is meaningful only on hardware with a Hexagon NPU.
 5. **Download the Gemma LiteRT-LM model and push it to the device.** Orion loads `gemma-4-E4B-it.litertlm` from `/data/local/tmp/` on the device.
