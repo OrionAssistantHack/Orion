@@ -207,6 +207,7 @@ Emit exactly ONE action — never a list, never multiple. If no action is needed
 
 Action type rules:
 - If "keyboardVisible" is true, action.type MUST be "type_text" or "none" — tap_node is forbidden.
+- For type_text: set nodeIndex to the 1-based index of the focused input field in the clickable elements list, and set text to the string to type.
 - Otherwise use tap_node for buttons, links, cards, and input placeholders."""
     }
 

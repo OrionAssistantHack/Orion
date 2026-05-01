@@ -77,6 +77,7 @@ Emit exactly ONE action — never a list, never multiple. If no action is needed
 
 Action type rules:
 - If "keyboardVisible" is false, action.type MUST be "tap_node". "type_text" is forbidden.
+- If "keyboardVisible" is true and text must be entered, action.type MUST be "type_text". Set nodeIndex to the 1-based index of the focused input field in the clickable elements list, and set text to the string to type.
 - Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here", "Search for a restaurant").
 - If the screen looks like it is still loading (very few elements visible), set screenPhase to "LOADING" and tap the most likely next element to continue the flow, or the back button if nothing relevant is visible.
 - Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed, item added to cart). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next", "Place Order", "Checkout") to advance."""

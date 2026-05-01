@@ -528,6 +528,22 @@ class ScreenCaptureService : Service() {
                                         }
                                         true
                                     }
+                                } else if (action.type == "type_text" && action.text != null) {
+                                    val exec = OrionAccessibilityService.instance?.executor
+                                    val success = exec?.typeTextFocused(action.text) ?: false
+                                    if (success) {
+                                        Log.i(TAG, "type_text via focused node text='${action.text}'")
+                                        lastSuccessfulAction = "Typed '${action.text}' into focused field"
+                                        retryContext = ""
+                                        postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                        pendingAutoSelectText = action.text
+                                    } else {
+                                        Log.w(TAG, "type_text focused fallback failed — no input-focused node")
+                                        retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
+                                            "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
+                                            "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
+                                    }
+                                    success
                                 } else {
                                     retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
                                         "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +

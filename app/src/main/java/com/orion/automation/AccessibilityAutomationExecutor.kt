@@ -130,7 +130,17 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
                 findEditableByRegex(root, nodeText)
             }
             if (target == null) {
-                Log.w(TAG, "typeText: no editable field found for '$nodeText'")
+                val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                Log.w(TAG, "typeText: no editable field found for '$nodeText' — focused=${focused?.let { "cls=${it.className} text='${it.text}' desc='${it.contentDescription}' editable=${it.isEditable}" } ?: "none"}")
+                if (focused != null && focused.isEditable) {
+                    val args = Bundle()
+                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                    val success = focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    focused.recycle()
+                    Log.i(TAG, "typeText: used focused node for '$text' → success=$success")
+                    return success
+                }
+                focused?.recycle()
                 return false
             }
             val args = Bundle()
@@ -168,6 +178,25 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
         return null
     }
 
+
+    fun typeTextFocused(text: String): Boolean {
+        val root = service.rootInActiveWindow ?: return false
+        return try {
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focused == null) {
+                Log.w(TAG, "typeTextFocused: no input-focused node found")
+                return false
+            }
+            val args = Bundle()
+            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            val success = focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            focused.recycle()
+            Log.i(TAG, "typeTextFocused('$text') → success=$success")
+            success
+        } finally {
+            root.recycle()
+        }
+    }
 
     override fun isScreenSecure(bitmap: Bitmap): Boolean {
         val cx = bitmap.width / 2
