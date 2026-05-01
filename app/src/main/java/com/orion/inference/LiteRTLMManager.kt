@@ -69,7 +69,11 @@ Reply ONLY with a single valid JSON object, no markdown:
     {"type": "type_text", "nodeIndex": <1-based index of the input field>, "nodeText": "<exact text of field>", "text": "<text to type>"}
   ]
 }
-Use empty actions array if no action is needed. nodeIndex must be a valid index from the clickable elements list above. Use type_text when you need to type into an input field (search box, text field). Use tap_node for buttons, links, and cards."""
+Use empty actions array if no action is needed. nodeIndex must be a valid index from the clickable elements list above.
+
+Action type rules:
+- Use tap_node for: buttons, links, cards, navigation elements, and search placeholders (e.g. "Where to?", "Search here") — anything that may open a new screen or focus an input when tapped.
+- Use type_text ONLY when: a keyboard is already visible on screen AND a text field is actively focused and ready to receive input (e.g. a blinking cursor is visible). Do NOT use type_text on a placeholder that requires a tap to open first."""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) {

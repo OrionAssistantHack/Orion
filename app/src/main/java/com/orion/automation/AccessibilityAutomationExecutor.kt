@@ -100,12 +100,11 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
     }
 
     fun typeText(nodeText: String, text: String): Boolean {
+        // Step 1: tap the node to focus/navigate
         val root = service.rootInActiveWindow ?: return false
-        return try {
+        try {
             var candidates = root.findAccessibilityNodeInfosByText(nodeText)
-            if (candidates.isNullOrEmpty()) {
-                candidates = findNodesByTextDFS(root, nodeText)
-            }
+            if (candidates.isNullOrEmpty()) candidates = findNodesByTextDFS(root, nodeText)
             if (candidates.isNullOrEmpty()) {
                 Log.w(TAG, "typeText: node not found for '$nodeText'")
                 return false
@@ -113,15 +112,50 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
             val node = candidates.firstOrNull { it.isEditable }
                 ?: candidates.firstOrNull { it.isClickable }
                 ?: candidates.first()
-            val args = android.os.Bundle()
-            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-            val success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             candidates.forEach { it.recycle() }
-            Log.i(TAG, "typeText('$nodeText', '$text') → success=$success")
-            success
+            Log.d(TAG, "typeText: tapped '$nodeText', waiting for screen to settle")
         } finally {
             root.recycle()
         }
+
+        // Step 2: wait for any navigation/focus animation to complete
+        Thread.sleep(700)
+
+        // Step 3: get a fresh tree and find the best editable target
+        val freshRoot = service.rootInActiveWindow ?: return false
+        return try {
+            val target = findFirstEditable(freshRoot)
+                ?: run {
+                    // editable field didn't appear — fall back to text search on fresh tree
+                    var fresh = freshRoot.findAccessibilityNodeInfosByText(nodeText)
+                    if (fresh.isNullOrEmpty()) fresh = findNodesByTextDFS(freshRoot, nodeText)
+                    fresh?.firstOrNull { it.isEditable } ?: fresh?.firstOrNull()
+                }
+            if (target == null) {
+                Log.w(TAG, "typeText: no editable field found after tap for '$nodeText'")
+                return false
+            }
+            val args = android.os.Bundle()
+            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            val success = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            target.recycle()
+            Log.i(TAG, "typeText('$nodeText', '$text') → success=$success")
+            success
+        } finally {
+            freshRoot.recycle()
+        }
+    }
+
+    private fun findFirstEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable) return AccessibilityNodeInfo.obtain(node)
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findFirstEditable(child)
+            child.recycle()
+            if (found != null) return found
+        }
+        return null
     }
 
     override fun isScreenSecure(bitmap: Bitmap): Boolean {
