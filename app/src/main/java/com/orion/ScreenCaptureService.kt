@@ -44,11 +44,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 private fun buildComparisonGoal(goal: com.orion.core.ParsedGoal): String = when (goal) {
     is com.orion.core.ParsedGoal.RideRequest ->
         "Navigate to the fare estimate screen for destination: ${goal.destination}. " +
-        "STOP at the fare estimate screen — do NOT tap Book, Request, Confirm, or any booking button."
+        "If a promotional overlay or bottom sheet appears (e.g. 'Pay with Bilt points', 'Pay with points', rewards offers), tap its X or Close button to dismiss it first. " +
+        "STOP at the fare estimate screen once you can see ride options with prices — do NOT tap Book, Request, Confirm, or any booking button."
     is com.orion.core.ParsedGoal.FoodOrder ->
         "Search for restaurant '${goal.restaurant}'" +
         (goal.item?.let { " and find item '$it'" } ?: "") +
         ". Navigate to the order summary page. " +
+        "If a promotional overlay appears, dismiss it first. " +
         "STOP before placing the order — do NOT tap Place Order, Checkout, or any submit button."
 }
 
