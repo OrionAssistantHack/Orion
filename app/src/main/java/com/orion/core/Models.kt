@@ -30,6 +30,7 @@ data class PlanAction(
     val app: String? = null,
     val fallbackUri: String? = null,
     val waitForPhase: String? = null,
+    val direction: String? = null,
 )
 
 data class Plan(val summaryForUser: String, val actions: List<PlanAction>, val goalReached: Boolean = false)

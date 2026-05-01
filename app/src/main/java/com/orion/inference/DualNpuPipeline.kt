@@ -193,10 +193,11 @@ Reply ONLY with a single valid JSON object, no markdown:
 {
   "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
   "action": {
-    "type": "<tap_node|type_text|none>",
+    "type": "<tap_node|type_text|swipe|press_home|none>",
     "nodeIndex": <1-based index from the clickable elements list, or null>,
     "nodeText": "<exact text of the node, or null>",
-    "text": "<text to type if type_text, otherwise null>"
+    "text": "<text to type if type_text, otherwise null>",
+    "direction": "<up|down for swipe, otherwise null>"
   },
   "screenPhase": "<UNKNOWN|HOME|SEARCH_INPUT|FARE_ESTIMATE|CONFIRMATION>",
   "extractedData": {"price": "...", "eta": "...", "service": "..."},
@@ -208,7 +209,11 @@ Emit exactly ONE action — never a list, never multiple. If no action is needed
 Action type rules:
 - If "keyboardVisible" is true, action.type MUST be "type_text" or "none" — tap_node is forbidden.
 - For type_text: set nodeIndex to the 1-based index of the focused input field in the clickable elements list, and set text to the string to type.
-- Otherwise use tap_node for buttons, links, cards, and input placeholders."""
+- If "keyboardVisible" is false, action.type MUST be one of "tap_node", "swipe", or "press_home" — "none" is forbidden unless the goal is fully achieved.
+- Use tap_node for buttons, links, cards, and input placeholders. This is the default — only use swipe or press_home below if tap_node clearly cannot make progress.
+- Use "swipe" with direction "up" (reveals content below) or "down" (reveals content above) ONLY when the screen is clearly scrollable and the element you need is off-screen.
+- Use "press_home" ONLY when the current screen does NOT belong to an app where the goal can be accomplished — Android launcher, an unrelated app, or an undismissable system dialog.
+  Never press_home just because a button you want is missing — swipe or tap something else. Never swipe to escape the launcher — press_home."""
     }
 
     @Synchronized
