@@ -158,7 +158,7 @@ class LiteRTLMManager private constructor(private val context: Context) {
                 Log.w(TAG, "NPU vision unsupported — reinitializing on GPU/CPU and retrying")
                 val reinitialized = reinitializeWithoutNpu()
                 if (reinitialized) {
-                    return@withContext try {
+                    return try {
                         perceiveAndPlan(bitmap, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
                     } catch (e2: Exception) {
                         Log.e(TAG, "perceiveAndPlan() failed after fallback", e2)
