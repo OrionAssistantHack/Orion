@@ -2,7 +2,7 @@ package com.orion.ui
 
 import android.content.Context
 import android.graphics.PixelFormat
-import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -10,9 +10,8 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
-import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.TextView
-import com.orion.R
 
 private const val TAG = "Orion.PipOverlay"
 private val mainHandler = Handler(Looper.getMainLooper())
@@ -33,16 +32,19 @@ object OrionPipOverlay {
         mainHandler.post {
             dismiss()
             val wm = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val view = buildPill(appCtx, statusText)
+            val dp = appCtx.resources.displayMetrics.density
+            val size = (48 * dp).toInt()
+            val view = buildDot(appCtx, size)
+            val metrics = appCtx.resources.displayMetrics
             val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                size, size,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
             ).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                y = (80 * appCtx.resources.displayMetrics.density).toInt()
+                gravity = Gravity.TOP or Gravity.START
+                x = metrics.widthPixels - size - (24 * dp).toInt()
+                y = metrics.heightPixels - size - (120 * dp).toInt()
             }
             makeDraggable(view, wm, params)
             wm.addView(view, params)
@@ -68,26 +70,24 @@ object OrionPipOverlay {
         isShowing = false
     }
 
-    private fun buildPill(context: Context, text: String): android.view.View {
+    private fun buildDot(context: Context, size: Int): android.view.View {
         val dp = context.resources.displayMetrics.density
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.bg_pip_pill)
-            val hPad = (20 * dp).toInt()
-            val vPad = (12 * dp).toInt()
-            setPadding(hPad, vPad, hPad, vPad)
-            addView(android.view.View(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    (8 * dp).toInt(), (8 * dp).toInt()
-                ).apply { marginEnd = (10 * dp).toInt() }
-                setBackgroundResource(R.drawable.bg_pip_dot)
-            })
+        return FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(size, size)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFFF97316.toInt(), 0xFFEF4444.toInt())
+            ).apply { shape = GradientDrawable.OVAL }
+            elevation = 8 * dp
             addView(TextView(context).apply {
-                this.text = text
+                text = "✦"
                 setTextColor(0xFFFFFFFF.toInt())
-                textSize = 13f
-                setTypeface(null, Typeface.BOLD)
+                textSize = 16f
+                gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
             })
         }
     }
@@ -110,8 +110,7 @@ object OrionPipOverlay {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     params.x = startParamX + (event.rawX - startX).toInt()
-                    // Gravity.BOTTOM: params.y is offset from bottom edge, so invert Y delta
-                    params.y = startParamY - (event.rawY - startY).toInt()
+                    params.y = startParamY + (event.rawY - startY).toInt()
                     wm.updateViewLayout(view, params)
                     true
                 }
