@@ -1,8 +1,10 @@
 package com.orion
 
 import android.app.*
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -10,6 +12,7 @@ import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import android.view.WindowManager
@@ -78,18 +81,51 @@ class ScreenCaptureService : Service() {
         super.onCreate()
         Log.i(TAG, "Service created")
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, -1) ?: return START_NOT_STICKY
-        val data = intent.getParcelableExtra<Intent>(EXTRA_DATA) ?: return START_NOT_STICKY
-        currentGoal = intent.getStringExtra(EXTRA_GOAL) ?: ""
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+            ?: Activity.RESULT_CANCELED
+        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent?.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getParcelableExtra(EXTRA_DATA)
+        }
+
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            Log.e(TAG, "Missing projection token — stopping self")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // Must specify FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION on API 34+ for a service
+        // declared with foregroundServiceType="mediaProjection" in the manifest.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
+
+        currentGoal = intent?.getStringExtra(EXTRA_GOAL) ?: ""
 
         val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = mgr.getMediaProjection(resultCode, data)
-        setupImageReader()
+        val mp = mgr.getMediaProjection(resultCode, data)
+        if (mp == null) {
+            Log.e(TAG, "getMediaProjection returned null — token invalid or already consumed")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        mediaProjection = mp
+        mp.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() {
+                Log.i(TAG, "MediaProjection stopped")
+                stopSelf()
+            }
+        }, null)
 
+        setupImageReader()
         Log.i(TAG, "Capture started, goal=$currentGoal")
 
         OrionAccessibilityService.instance?.onCaptureRequested = { nodes ->
@@ -109,6 +145,9 @@ class ScreenCaptureService : Service() {
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader?.surface, null, null
         )
+        if (virtualDisplay == null) {
+            Log.e(TAG, "createVirtualDisplay returned null")
+        }
     }
 
     private fun captureFrameToFile(): String? {

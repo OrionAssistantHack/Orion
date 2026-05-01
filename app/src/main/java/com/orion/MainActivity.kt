@@ -7,6 +7,10 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.orion.databinding.ActivityMainBinding
 import com.orion.inference.LiteRTLMManager
@@ -24,11 +28,12 @@ class MainActivity : AppCompatActivity() {
     private var selectedPackage = "com.ubercab"
     private val captureRequestCode = 2001
 
-    private val appOptions = listOf(
-        Triple("Uber", "com.ubercab", "Uber"),
-        Triple("Lyft", "me.lyft.android", "Lyft"),
-        Triple("AI Gallery", "com.google.aiedge.gallery", "AI Gallery")
-    )
+    private val appOptions =
+            listOf(
+                    Triple("Uber", "com.ubercab", "Uber"),
+                    Triple("Lyft", "me.lyft.android", "Lyft"),
+                    Triple("AI Gallery", "com.google.aiedge.gallery", "AI Gallery")
+            )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +43,14 @@ class MainActivity : AppCompatActivity() {
 
         liteRTLMManager = LiteRTLMManager.getInstance(this)
 
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            v.updatePadding(bottom = maxOf(imeBottom, navBottom))
+            insets
+        }
+
         setupAppSelector()
         setupButtons()
         promptAccessibilityIfNeeded()
@@ -46,13 +59,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupAppSelector() {
         for ((label, pkg, _) in appOptions) {
-            val btn = Button(this).apply {
-                text = label
-                setOnClickListener {
-                    selectedPackage = pkg
-                    binding.textTargetApp.text = getString(R.string.label_target_app) + label
-                }
-            }
+            val btn =
+                    Button(this).apply {
+                        text = label
+                        setOnClickListener {
+                            selectedPackage = pkg
+                            binding.textTargetApp.text =
+                                    getString(R.string.label_target_app) + label
+                        }
+                    }
             binding.layoutAppSelector.addView(btn)
         }
     }
@@ -68,25 +83,33 @@ class MainActivity : AppCompatActivity() {
             binding.textStatus.text = "Please enter a goal first"
             return
         }
-        val launchIntent = packageManager.getLaunchIntentForPackage(selectedPackage)
-        if (launchIntent == null) {
-            binding.textStatus.text = "Target app not installed"
+        if (packageManager.getLaunchIntentForPackage(selectedPackage) == null) {
+            binding.textStatus.text = "App not found: $selectedPackage"
             return
         }
-        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(launchIntent)
+        binding.textStatus.text = "Requesting screen capture permission…"
+        binding.btnStart.isEnabled = false
         val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         startActivityForResult(mgr.createScreenCaptureIntent(), captureRequestCode)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == captureRequestCode && resultCode == RESULT_OK && data != null) {
-            val goal = binding.editGoal.text.toString().trim()
-            ScreenCaptureService.startCapture(this, resultCode, data, goal, selectedPackage)
-            binding.btnStart.isEnabled = false
-            binding.btnStop.isEnabled = true
-            binding.textStatus.text = getString(R.string.status_running)
+        if (requestCode == captureRequestCode) {
+            if (resultCode == RESULT_OK && data != null) {
+                val goal = binding.editGoal.text.toString().trim()
+                ScreenCaptureService.startCapture(this, resultCode, data, goal, selectedPackage)
+                val launchIntent = packageManager.getLaunchIntentForPackage(selectedPackage)
+                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (launchIntent != null) {
+                    startActivity(launchIntent)
+                }
+                binding.btnStop.isEnabled = true
+                binding.textStatus.text = getString(R.string.status_running)
+            } else {
+                binding.btnStart.isEnabled = true
+                binding.textStatus.text = "Screen capture permission denied"
+            }
         }
     }
 
@@ -98,26 +121,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun promptAccessibilityIfNeeded() {
-        val enabled = Settings.Secure.getString(
-            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: ""
+        val enabled =
+                Settings.Secure.getString(
+                        contentResolver,
+                        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                )
+                        ?: ""
         if (!enabled.contains("$packageName/${OrionAccessibilityService::class.java.name}")) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 
     private fun initializeModel() {
-        val modelPath = "${getExternalFilesDir(null)?.absolutePath}/model.litertlm"
-        val modelFile = java.io.File(modelPath)
-        if (!modelFile.exists()) {
-            binding.textStatus.text = "Push model.litertlm to ${getExternalFilesDir(null)?.absolutePath}"
-            return
-        }
         // Already initialized (e.g. after rotation) — just restore UI state
         if (liteRTLMManager.getActiveBackend() != "None") {
             binding.textBackendStatus.text = liteRTLMManager.getActiveBackend()
             binding.textStatus.text = getString(R.string.status_ready)
             binding.btnStart.isEnabled = true
+            return
+        }
+        val modelPath = findModelPath()
+        if (modelPath == null) {
+            binding.textStatus.text =
+                    "Push model.litertlm to ${getExternalFilesDir(null)?.absolutePath}"
             return
         }
         binding.textStatus.text = getString(R.string.status_loading)
@@ -128,13 +154,25 @@ class MainActivity : AppCompatActivity() {
                 liteRTLMManager.startConversation()
                 val elapsed = System.currentTimeMillis() - startMs
                 Log.i(TAG, "Model loaded on ${liteRTLMManager.getActiveBackend()} in ${elapsed}ms")
-                binding.textBackendStatus.text = "${liteRTLMManager.getActiveBackend()} — ${elapsed}ms"
+                binding.textBackendStatus.text =
+                        "${liteRTLMManager.getActiveBackend()} — ${elapsed}ms"
                 binding.textStatus.text = getString(R.string.status_ready)
                 binding.btnStart.isEnabled = true
             } catch (e: Exception) {
                 binding.textStatus.text = "Model load failed: ${e.message}"
             }
         }
+    }
+
+    private fun findModelPath(): String? {
+        val candidates =
+                listOfNotNull(
+                        getExternalFilesDir(null)?.absolutePath?.let {
+                            "$it/gemma-4-E2B-it_qualcomm_sm8750.litertlm"
+                        },
+                        "/data/local/tmp/gemma-4-E2B-it_qualcomm_sm8750.litertlm"
+                )
+        return candidates.firstOrNull { java.io.File(it).exists() }
     }
 
     override fun onDestroy() {
