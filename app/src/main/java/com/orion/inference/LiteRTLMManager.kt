@@ -63,10 +63,11 @@ Reply ONLY with a single valid JSON object, no markdown:
 {
   "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
   "action": {
-    "type": "<tap_node|type_text|none>",
+    "type": "<tap_node|type_text|swipe|press_home|none>",
     "nodeIndex": <1-based index from the clickable elements list, or null>,
     "nodeText": "<exact text of the node, or null>",
-    "text": "<text to type if type_text, otherwise null>"
+    "text": "<text to type if type_text, otherwise null>",
+    "direction": "<up|down for swipe, otherwise null>"
   },
   "screenPhase": "<UNKNOWN|HOME|LOADING|INPUT_REQUIRED|SELECTION|CONFIRMATION>",
   "extractedData": {"price": "...", "eta": "...", "service": "..."},
@@ -76,11 +77,15 @@ Reply ONLY with a single valid JSON object, no markdown:
 Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
 Action type rules:
-- If "keyboardVisible" is false, action.type MUST be "tap_node". "type_text" is forbidden.
+- If "keyboardVisible" is false, action.type MUST be one of "tap_node", "swipe", or "press_home". "type_text" is forbidden, and "none" is forbidden unless the goal is fully achieved (see the "none" rule below).
 - If "keyboardVisible" is true and text must be entered, action.type MUST be "type_text". Set nodeIndex to the 1-based index of the focused input field in the clickable elements list, and set text to the string to type.
-- Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here", "Search for a restaurant").
+- Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here", "Search for a restaurant"). This is the default — only use swipe or press_home below if tap_node clearly cannot make progress.
+- Use "swipe" with direction "up" (reveals content below) or "down" (reveals content above) ONLY when the screen is clearly scrollable and the element you need is off-screen. Set nodeIndex/nodeText/text to null.
+- On the Android launcher / home screen, if the app you need is not visible on this page, swipe up to open the app drawer / app search before tapping any visible app.
+- Use "press_home" ONLY when the current screen does NOT belong to an app where the user's goal can be accomplished — e.g. an unrelated app you opened by mistake, or an undismissable system dialog. Set nodeIndex/nodeText/text/direction to null.
+  Never press_home just because a button you want is missing — swipe or pick a different tap target instead. Never swipe to escape an unrelated app — press_home instead.
 - If the screen looks like it is still loading (very few elements visible), set screenPhase to "LOADING" and tap the most likely next element to continue the flow, or the back button if nothing relevant is visible.
-- Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed, item added to cart). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next", "Place Order", "Checkout") to advance."""
+- Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed, item added to cart, setting changed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next", "Place Order", "Checkout") to advance."""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
@@ -337,6 +342,7 @@ private fun companion_parseResponse(raw: String): Pair<PerceptionResult, Plan> {
                     app = actionObj.optString("app").takeIf { it.isNotEmpty() && it != "null" },
                     fallbackUri = actionObj.optString("fallbackUri").takeIf { it.isNotEmpty() && it != "null" },
                     waitForPhase = actionObj.optString("waitForPhase").takeIf { it.isNotEmpty() && it != "null" },
+                    direction = actionObj.optString("direction").takeIf { it.isNotEmpty() && it != "null" },
                 ))
             }
         } else {

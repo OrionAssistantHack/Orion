@@ -107,6 +107,44 @@ class AccessibilityAutomationExecutor(private val service: AccessibilityService)
         return ExecutionResult(true)
     }
 
+    override fun swipe(direction: String, screenWidth: Int, screenHeight: Int): ExecutionResult {
+        if (screenWidth <= 0 || screenHeight <= 0) {
+            return ExecutionResult(false, errorCode = "BAD_SCREEN_SIZE")
+        }
+        val cx = screenWidth / 2f
+        val (yStart, yEnd) = when (direction.lowercase()) {
+            "up" -> screenHeight * 0.7f to screenHeight * 0.3f
+            "down" -> screenHeight * 0.3f to screenHeight * 0.7f
+            else -> {
+                Log.w(TAG, "swipe: unknown direction '$direction' — defaulting to up")
+                screenHeight * 0.7f to screenHeight * 0.3f
+            }
+        }
+        val path = Path().apply { moveTo(cx, yStart); lineTo(cx, yEnd) }
+        val durationMs = 400L
+        val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs)
+        val gesture = GestureDescription.Builder()
+            .addStroke(stroke)
+            .setDisplayId(android.view.Display.DEFAULT_DISPLAY)
+            .build()
+        val dispatched = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(g: GestureDescription) { Log.i(TAG, "swipe: onCompleted dir=$direction") }
+            override fun onCancelled(g: GestureDescription) { Log.w(TAG, "swipe: onCancelled dir=$direction") }
+        }, null)
+        if (!dispatched) {
+            Log.e(TAG, "swipe: dispatchGesture returned false")
+            return ExecutionResult(false, errorCode = "DISPATCH_FAILED")
+        }
+        Thread.sleep(durationMs + 100L)
+        return ExecutionResult(true)
+    }
+
+    override fun pressHome(): ExecutionResult {
+        val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        Log.i(TAG, "pressHome → $ok")
+        return ExecutionResult(ok, errorCode = if (ok) null else "HOME_FAILED")
+    }
+
     fun dispatchText(node: AccessibilityNodeInfo, text: String): Boolean {
         val args = Bundle()
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)

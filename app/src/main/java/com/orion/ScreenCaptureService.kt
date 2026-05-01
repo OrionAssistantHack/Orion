@@ -142,6 +142,7 @@ class ScreenCaptureService : Service() {
                 postActionCooldownUntil = 0L
                 pendingAutoSelectText = null
                 consecutiveNoneCount = 0
+                hideNextCycleText = null
             }
         }
 
@@ -167,6 +168,10 @@ class ScreenCaptureService : Service() {
     @Volatile private var postActionCooldownUntil: Long = 0L
     @Volatile private var pendingAutoSelectText: String? = null
     @Volatile private var consecutiveNoneCount: Int = 0
+    // Set when press_home fires (to the node text we just tapped). The next inference cycle
+    // hides any matching node from the list before sending it to the model, so the model
+    // physically cannot re-pick it. One-shot — cleared after that single cycle.
+    @Volatile private var hideNextCycleText: String? = null
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -409,6 +414,21 @@ class ScreenCaptureService : Service() {
                     val screenH = bitmapForInference.height
                     inferenceScope.launch {
                         try {
+                            // Hide-next-cycle hard filter: when press_home fired last cycle we stashed
+                            // the just-tapped node text. Remove any matching node from the list the
+                            // model sees AND resolves indices against — the prompt is unchanged. The
+                            // constraint is one-shot: cleared after this single cycle so the option
+                            // returns on the cycle after.
+                            val hide = hideNextCycleText
+                            hideNextCycleText = null
+                            val rawNodes = nodes
+                            val nodes: List<Pair<String, Rect>> = if (hide != null) {
+                                rawNodes.filterNot { (text, _) -> text.contains(hide, ignoreCase = true) }
+                                    .also { filtered ->
+                                        val removed = rawNodes.size - filtered.size
+                                        if (removed > 0) Log.i(TAG, "Hide-next-cycle: removed $removed node(s) matching '$hide' (${rawNodes.size}→${filtered.size})")
+                                    }
+                            } else rawNodes
                             val inferenceStartMs = System.currentTimeMillis()
                             val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, if (retryCount == 0) lastSuccessfulAction else "")
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
@@ -510,83 +530,119 @@ class ScreenCaptureService : Service() {
                             }
                             consecutiveNoneCount = 0
 
-                            val actionExecuted = if (plan.actions.isNotEmpty()) {
-                                val action = plan.actions[0]
-                                val nodeIdx = action.nodeIndex
-                                val target = when {
-                                    nodeIdx != null && nodeIdx in nodes.indices ->
-                                        nodes[nodeIdx]
-                                    action.nodeText != null -> {
-                                        val t = action.nodeText
-                                        nodes.firstOrNull { it.first == t }
-                                            ?: nodes.firstOrNull { it.first.equals(t, ignoreCase = true) }
-                                            ?: nodes.firstOrNull { it.first.startsWith(t, ignoreCase = true) }
-                                            ?: nodes.firstOrNull { it.first.contains(t, ignoreCase = true) }
-                                    }
-                                    else -> null
+                            val firstAction = plan.actions.firstOrNull()
+                            val actionType = firstAction?.type
+                            // Recovery-action contract (decided by the model from the screenshot):
+                            //   press_home → model judged we are in the WRONG app/screen (launcher,
+                            //                a different app, an undismissable system dialog).
+                            //                We escape and relaunch targetApp.
+                            //   swipe      → model judged we are in the CORRECT app but the element
+                            //                it needs is off-screen; scroll and re-perceive.
+                            // The discrimination lives in the prompt rules; lastAppPackage cannot be
+                            // used here because launcher events are filtered by the a11y config.
+                            val actionExecuted: Boolean = when {
+                                firstAction == null -> {
+                                    Log.w(TAG, "Model returned empty actions — raw: ${perception.rawDescription.take(200)}")
+                                    false
                                 }
-                                if (target != null) {
-                                    if (action.type == "type_text" && action.text != null) {
+                                actionType == "swipe" -> {
+                                    val direction = firstAction.direction ?: "up"
+                                    val ok = OrionAccessibilityService.instance?.executor?.swipe(direction, screenW, screenH)?.success == true
+                                    Log.i(TAG, "swipe direction=$direction → $ok")
+                                    if (ok) postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                    ok
+                                }
+                                actionType == "press_home" -> {
+                                    val homeOk = OrionAccessibilityService.instance?.executor?.pressHome()?.success == true
+                                    Log.i(TAG, "press_home → $homeOk")
+                                    if (homeOk && targetApp.isNotBlank()) {
+                                        val launchIntent = packageManager.getLaunchIntentForPackage(targetApp)
+                                            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        if (launchIntent != null) {
+                                            Log.i(TAG, "press_home: relaunching $targetApp")
+                                            startActivity(launchIntent)
+                                        } else {
+                                            Log.w(TAG, "press_home: no launch intent for $targetApp")
+                                        }
+                                    }
+                                    if (homeOk) postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                    homeOk
+                                }
+                                else -> {
+                                    val action = firstAction
+                                    val nodeIdx = action.nodeIndex
+                                    val target = when {
+                                        nodeIdx != null && nodeIdx in nodes.indices ->
+                                            nodes[nodeIdx]
+                                        action.nodeText != null -> {
+                                            val t = action.nodeText
+                                            nodes.firstOrNull { it.first == t }
+                                                ?: nodes.firstOrNull { it.first.equals(t, ignoreCase = true) }
+                                                ?: nodes.firstOrNull { it.first.startsWith(t, ignoreCase = true) }
+                                                ?: nodes.firstOrNull { it.first.contains(t, ignoreCase = true) }
+                                        }
+                                        else -> null
+                                    }
+                                    if (target != null) {
+                                        if (action.type == "type_text" && action.text != null) {
+                                            val exec = OrionAccessibilityService.instance?.executor
+                                            val success = exec?.typeText(target.first, action.text) ?: false
+                                            if (success) {
+                                                Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
+                                                lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
+                                                retryContext = ""
+                                                postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                                pendingAutoSelectText = action.text
+                                            } else {
+                                                Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
+                                                retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
+                                            }
+                                            success
+                                        } else {
+                                            Log.i(TAG, "Auto-tapping '${target.first}' via ACTION_CLICK [nodeIdx=$nodeIdx]")
+                                            val result = OrionAccessibilityService.instance?.executor?.tapNode(target.first)
+                                            val tapped = result?.success == true
+                                            if (tapped) {
+                                                lastSuccessfulAction = "Tapped '${target.first}'"
+                                                retryContext = ""
+                                                postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                            } else {
+                                                Log.w(TAG, "ACTION_CLICK failed for '${target.first}' (${result?.errorCode}) — falling back to coordinates")
+                                                val cx = target.second.centerX().toFloat()
+                                                val cy = target.second.centerY().toFloat()
+                                                OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
+                                                lastSuccessfulAction = "Tapped '${target.first}'"
+                                                retryContext = ""
+                                                postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                                            }
+                                            true
+                                        }
+                                    } else if (action.type == "type_text" && action.text != null) {
                                         val exec = OrionAccessibilityService.instance?.executor
-                                        val success = exec?.typeText(target.first, action.text) ?: false
+                                        val success = exec?.typeTextFocused(action.text) ?: false
                                         if (success) {
-                                            Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
-                                            lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
+                                            Log.i(TAG, "type_text via focused node text='${action.text}'")
+                                            lastSuccessfulAction = "Typed '${action.text}' into focused field"
                                             retryContext = ""
                                             postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
                                             pendingAutoSelectText = action.text
                                         } else {
-                                            Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
-                                            retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
+                                            Log.w(TAG, "type_text focused fallback failed — no input-focused node")
+                                            retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
+                                                "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
+                                                "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
                                         }
                                         success
                                     } else {
-                                        Log.i(TAG, "Auto-tapping '${target.first}' via ACTION_CLICK [nodeIdx=$nodeIdx]")
-                                        val result = OrionAccessibilityService.instance?.executor?.tapNode(target.first)
-                                        val tapped = result?.success == true
-                                        if (tapped) {
-                                            lastSuccessfulAction = "Tapped '${target.first}'"
-                                            retryContext = ""
-                                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                        } else {
-                                            Log.w(TAG, "ACTION_CLICK failed for '${target.first}' (${result?.errorCode}) — falling back to coordinates")
-                                            val cx = target.second.centerX().toFloat()
-                                            val cy = target.second.centerY().toFloat()
-                                            OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
-                                            lastSuccessfulAction = "Tapped '${target.first}'"
-                                            retryContext = ""
-                                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                        }
-                                        true
-                                    }
-                                } else if (action.type == "type_text" && action.text != null) {
-                                    val exec = OrionAccessibilityService.instance?.executor
-                                    val success = exec?.typeTextFocused(action.text) ?: false
-                                    if (success) {
-                                        Log.i(TAG, "type_text via focused node text='${action.text}'")
-                                        lastSuccessfulAction = "Typed '${action.text}' into focused field"
-                                        retryContext = ""
-                                        postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                        pendingAutoSelectText = action.text
-                                    } else {
-                                        Log.w(TAG, "type_text focused fallback failed — no input-focused node")
                                         retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
                                             "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
                                             "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
+                                        Log.w(TAG, "Tap resolution failed — nodeIdx=$nodeIdx nodeText=${action.nodeText}")
+                                        val nodeListStr = nodes.mapIndexed { i, (text, _) -> "[${i+1}] \"$text\"" }.joinToString(", ")
+                                        Log.w(TAG, "Resolution failed — available: $nodeListStr")
+                                        false
                                     }
-                                    success
-                                } else {
-                                    retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
-                                        "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
-                                        "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
-                                    Log.w(TAG, "Tap resolution failed — nodeIdx=$nodeIdx nodeText=${action.nodeText}")
-                                    val nodeListStr = nodes.mapIndexed { i, (text, _) -> "[${i+1}] \"$text\"" }.joinToString(", ")
-                                    Log.w(TAG, "Resolution failed — available: $nodeListStr")
-                                    false
                                 }
-                            } else {
-                                Log.w(TAG, "Model returned empty actions — raw: ${perception.rawDescription.take(200)}")
-                                false
                             }
 
                             if (!actionExecuted) {
@@ -600,8 +656,26 @@ class ScreenCaptureService : Service() {
                                     retryContext = ""
                                 }
                             } else {
-                                retryCount = 0
-                                retryContext = ""
+                                when (actionType) {
+                                    "press_home" -> {
+                                        // Extract the node text we just tapped (e.g. "Tapped 'Messages'" → "Messages")
+                                        // and stash it on hideNextCycleText so the next inference cycle removes
+                                        // that node from the list the model sees. We do NOT touch the prompt —
+                                        // the constraint is enforced purely by hiding the node.
+                                        hideNextCycleText = Regex("[Tt]apped '(.+?)'").find(lastSuccessfulAction)?.groupValues?.get(1)
+                                        retryCount /= 2
+                                        lastSuccessfulAction = ""
+                                        retryContext = ""
+                                    }
+                                    "swipe" -> {
+                                        // Per design: leave retryCount and lastSuccessfulAction untouched —
+                                        // swipe is exploratory and the meaningful prior action is still relevant.
+                                    }
+                                    else -> {
+                                        retryCount = 0
+                                        retryContext = ""
+                                    }
+                                }
                             }
 
                             onPlanResult?.let { cb ->
