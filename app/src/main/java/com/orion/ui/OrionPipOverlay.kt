@@ -1,6 +1,7 @@
 package com.orion.ui
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -89,6 +90,12 @@ object OrionPipOverlay {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
             })
+            setOnClickListener {
+                val intent = Intent(context, com.orion.MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+                context.startActivity(intent)
+            }
         }
     }
 

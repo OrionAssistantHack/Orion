@@ -169,7 +169,7 @@ class MainActivity : AppCompatActivity() {
         "rides" -> listOf(
             PresetCard("🚗", "Find cheapest ride", "Compares Uber, Lyft & Waymo",
                 packageName = null,
-                goalTemplate = "find cheapest ride to [destination]",
+                goalTemplate = "find a ride to [destination]",
                 needsDestination = true),
             PresetCard("🚕", "Book an Uber", "Open Uber and complete booking",
                 packageName = "com.ubercab",
