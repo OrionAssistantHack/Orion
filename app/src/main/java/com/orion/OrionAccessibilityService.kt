@@ -1,8 +1,10 @@
 package com.orion
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Rect
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.orion.automation.AccessibilityAutomationExecutor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +73,29 @@ class OrionAccessibilityService : AccessibilityService() {
             ScreenCaptureService.triggerCapture()
         }
     }
+
+    /** Returns the on-screen bounds of the currently focused editable node, or null if none. */
+    fun focusedEditableBounds(): Rect? {
+        var root: AccessibilityNodeInfo? = null
+        var focused: AccessibilityNodeInfo? = null
+        return try {
+            root = rootInActiveWindow ?: return null
+            focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+            if (!focused.isEditable) return null
+            val rect = Rect()
+            focused.getBoundsInScreen(rect)
+            Log.d(TAG, "focusedEditableBounds: $rect text='${focused.text}'")
+            rect
+        } catch (e: Exception) {
+            Log.w(TAG, "focusedEditableBounds failed: ${e.message}")
+            null
+        } finally {
+            try { focused?.recycle() } catch (_: Exception) {}
+            try { root?.recycle() } catch (_: Exception) {}
+        }
+    }
+
+    fun isKeyboardVisible(): Boolean = focusedEditableBounds() != null
 
     override fun onInterrupt() {
         Log.w(TAG, "OrionAccessibilityService interrupted")

@@ -36,13 +36,16 @@ internal fun buildPrompt(
     screenHeight: Int,
     appPackage: String,
     retryContext: String,
-    previousAction: String
+    previousAction: String,
+    keyboardVisible: Boolean,
+    focusedInputIndex: Int
 ): String {
     val nodeList = if (nodes.isNotEmpty()) {
         "\n\nClickable elements on screen:\n" +
         nodes.mapIndexed { i, (text, rect) ->
             val label = if (text.length > 60) text.take(60) + "…" else text
-            "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})"
+            val marker = if (i == focusedInputIndex) "  ← INPUT FIELD (text you typed; do NOT tap to select as a result)" else ""
+            "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})$marker"
         }.joinToString("\n")
     } else ""
 
@@ -57,11 +60,12 @@ internal fun buildPrompt(
     Log.d(TAG, "History prefix:")
     Log.d(TAG, historyPrefix)
 
-    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress?$nodeList
+    val keyboardFact = "Keyboard visible (verified by Android OS, do not second-guess this): ${if (keyboardVisible) "TRUE" else "FALSE"}\n\n"
+
+    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${keyboardFact}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress?$nodeList
 
 Reply ONLY with a single valid JSON object, no markdown:
 {
-  "keyboardVisible": <true if you see a QWERTY layout on the screen, false otherwise>,
   "action": {
     "type": "<tap_node|type_text|none>",
     "nodeIndex": <1-based index from the clickable elements list, or null>,
@@ -75,10 +79,11 @@ Reply ONLY with a single valid JSON object, no markdown:
 }
 Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
 
-Action type rules:
-- If "keyboardVisible" is false, action.type MUST be "tap_node". "type_text" is forbidden.
-- Otherwise use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here").
-- Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next") to advance."""
+Action type rules (the "Keyboard visible" line above is the ground truth — use it):
+- If Keyboard visible is TRUE and the input field is empty or does not yet contain the goal text, action.type MUST be "type_text". Set "text" to the value derived from the user's goal, and "nodeIndex"/"nodeText" to the INPUT FIELD entry marked above.
+- If Keyboard visible is TRUE and the input field already contains the goal text, action.type MUST be "tap_node" on a search result entry from the list (NOT the INPUT FIELD entry). Pick the result whose text best matches the goal destination.
+- If Keyboard visible is FALSE, action.type MUST be "tap_node". Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Search here").
+- Use "none" ONLY when a final confirmation screen is visible (e.g. ride booked, order placed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next") to advance."""
 }
 
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
@@ -126,7 +131,9 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         screenHeight: Int,
         appPackage: String,
         retryContext: String,
-        previousAction: String
+        previousAction: String,
+        keyboardVisible: Boolean,
+        focusedInputIndex: Int
     ): Pair<PerceptionResult, Plan> {
         val eng = engine ?: return fallback("engine_null")
         try {
@@ -146,7 +153,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         val imageBytes = stream.toByteArray()
-        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB image + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction).length}ch prompt)")
+        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB image + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex).length}ch prompt) keyboardVisible=$keyboardVisible focusedInputIndex=$focusedInputIndex")
 
         return try {
             val response = suspendCancellableCoroutine { cont ->
@@ -154,7 +161,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
                 conv.sendMessageAsync(
                     Contents.of(listOf(
                         Content.ImageBytes(imageBytes),
-                        Content.Text(buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)),
+                        Content.Text(buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex)),
                     )),
                     object : MessageCallback {
                         override fun onMessage(message: com.google.ai.edge.litertlm.Message) { sb.append(message.toString()) }
@@ -173,7 +180,7 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
                 val reinitialized = reinitializeWithoutNpu()
                 if (reinitialized) {
                     return try {
-                        perceiveAndPlan(bitmap, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
+                        perceiveAndPlan(bitmap, goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction, keyboardVisible, focusedInputIndex)
                     } catch (e2: Exception) {
                         Log.e(TAG, "perceiveAndPlan() failed after fallback", e2)
                         fallback("error_after_fallback: ${e2.message}")

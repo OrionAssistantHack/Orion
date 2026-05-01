@@ -306,10 +306,18 @@ class ScreenCaptureService : Service() {
 
                     val screenW = bitmapForInference.width
                     val screenH = bitmapForInference.height
+                    val focusedBounds = OrionAccessibilityService.instance?.focusedEditableBounds()
+                    val keyboardVisible = focusedBounds != null
+                    val focusedInputIndex = if (focusedBounds != null) {
+                        val cx = focusedBounds.centerX()
+                        val cy = focusedBounds.centerY()
+                        nodes.indexOfFirst { it.second.contains(cx, cy) }
+                    } else -1
+                    Log.i(TAG, "Keyboard visible (from a11y): $keyboardVisible focusedInputIndex=$focusedInputIndex")
                     inferenceScope.launch {
                         try {
                             val inferenceStartMs = System.currentTimeMillis()
-                            val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, if (retryCount == 0) lastSuccessfulAction else "")
+                            val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, if (retryCount == 0) lastSuccessfulAction else "", keyboardVisible, focusedInputIndex)
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
                             Log.i(TAG, "Frame #$frameNum [${lm.getDescription()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
                             Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
