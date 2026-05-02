@@ -439,83 +439,11 @@ class ScreenCaptureService : Service() {
                             Log.i(TAG, "Plan: ${plan.summaryForUser} | actions=${plan.actions.size}: ${plan.actions.joinToString { "${it.type}(${it.nodeText ?: it.nodeIndex})" }}")
                             appendInferenceLog(frameNum, elapsedMs, pendingGoal, targetApp, perception.rawDescription, plan.summaryForUser, plan.actions)
 
-                            // Comparison mode: when price is extracted, we've reached the fare screen.
-                            // Don't gate on screenPhase — the LLM returns SELECTION for Uber's fare
-                            // selection screen, not FARE_ESTIMATE, so phase-based detection is unreliable.
-                            val session = comparisonSession
-                            if (session != null && !session.isComplete) {
-                                val price = perception.extractedData["price"]
-                                    ?.takeIf { p -> p.isNotBlank() && p != "null" && p.any { it.isDigit() } }
-                                if (price != null) {
-                                    val eta = perception.extractedData["eta"]
-                                        ?.replace(Regex("[^0-9]"), "")
-                                        ?.toIntOrNull()
-                                    val currentPkg = session.currentApp?.packageName
-                                    if (currentPkg != null) {
-                                        session.collectedFares[currentPkg] =
-                                            com.orion.core.FareData(price, eta, perception.confidence)
-                                        Log.i(TAG, "Comparison: fare collected for $currentPkg — price=$price eta=$eta")
-                                    }
-                                    session.advance()
-
-                                    if (session.isComplete) {
-                                        Log.i(TAG, "Comparison: all fares collected — showing overlay")
-                                        val capturedSession = session
-                                        comparisonSession = null
-                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                            com.orion.ui.ComparisonOverlay.show(
-                                                this@ScreenCaptureService,
-                                                capturedSession,
-                                                onBook = { chosenApp -> onBookingChosen?.invoke(chosenApp) },
-                                                onDismiss = { onSessionDismissed?.invoke() }
-                                            )
-                                            stopSelf()
-                                        }
-                                    } else {
-                                        val nextApp = session.currentApp
-                                        if (nextApp != null) {
-                                            Log.i(TAG, "Comparison: advancing to ${nextApp.packageName}")
-                                            targetApp = nextApp.packageName
-                                            pendingGoal = buildComparisonGoal(session.parsedGoal)
-                                            resetGoalState()
-                                            val intent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(nextApp.packageName)
-                                                ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            if (intent != null) {
-                                                this@ScreenCaptureService.startActivity(intent)
-                                            } else {
-                                                Log.w(TAG, "Comparison: ${nextApp.packageName} not installed — skipping")
-                                                session.advance()
-                                                if (session.isComplete) {
-                                                    val capturedSession2 = session
-                                                    comparisonSession = null
-                                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                                        com.orion.ui.ComparisonOverlay.show(
-                                                            this@ScreenCaptureService,
-                                                            capturedSession2,
-                                                            onBook = { chosenApp -> onBookingChosen?.invoke(chosenApp) },
-                                                            onDismiss = { onSessionDismissed?.invoke() }
-                                                        )
-                                                        stopSelf()
-                                                    }
-                                                } else {
-                                                    val skippedTo = session.currentApp
-                                                    if (skippedTo != null) {
-                                                        targetApp = skippedTo.packageName
-                                                        pendingGoal = buildComparisonGoal(session.parsedGoal)
-                                                        resetGoalState()
-                                                        val nextIntent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(skippedTo.packageName)
-                                                            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                        if (nextIntent != null) this@ScreenCaptureService.startActivity(nextIntent)
-                                                        else Log.w(TAG, "Comparison: ${skippedTo.packageName} also not installed — session may stall")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    return@launch  // skip action execution — fare collected, session advanced
-                                }
+                            if (handleComparisonSession(perception, plan)) {
+                                return@launch
                             }
 
+                            val session = comparisonSession
                             if (plan.goalReached && session == null) {
                                 consecutiveNoneCount++
                                 Log.i(TAG, "Goal-reached signal $consecutiveNoneCount/$CONSECUTIVE_NONE_THRESHOLD")
@@ -708,6 +636,86 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun handleComparisonSession(
+        perception: com.orion.core.PerceptionResult,
+        plan: com.orion.core.Plan
+    ): Boolean {
+        val session = comparisonSession
+        if (session != null && !session.isComplete) {
+            val price = perception.extractedData["price"]
+                ?.takeIf { p -> p.isNotBlank() && p != "null" && p.any { it.isDigit() } }
+            if (price != null) {
+                val eta = perception.extractedData["eta"]
+                    ?.replace(Regex("[^0-9]"), "")
+                    ?.toIntOrNull()
+                val currentPkg = session.currentApp?.packageName
+                if (currentPkg != null) {
+                    session.collectedFares[currentPkg] =
+                        com.orion.core.FareData(price, eta, perception.confidence)
+                    Log.i(TAG, "Comparison: fare collected for $currentPkg — price=$price eta=$eta")
+                }
+                session.advance()
+
+                if (session.isComplete) {
+                    Log.i(TAG, "Comparison: all fares collected — showing overlay")
+                    val capturedSession = session
+                    comparisonSession = null
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        com.orion.ui.ComparisonOverlay.show(
+                            this@ScreenCaptureService,
+                            capturedSession,
+                            onBook = { chosenApp -> onBookingChosen?.invoke(chosenApp) },
+                            onDismiss = { onSessionDismissed?.invoke() }
+                        )
+                        stopSelf()
+                    }
+                } else {
+                    val nextApp = session.currentApp
+                    if (nextApp != null) {
+                        Log.i(TAG, "Comparison: advancing to ${nextApp.packageName}")
+                        targetApp = nextApp.packageName
+                        pendingGoal = buildComparisonGoal(session.parsedGoal)
+                        resetGoalState()
+                        val intent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(nextApp.packageName)
+                            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        if (intent != null) {
+                            this@ScreenCaptureService.startActivity(intent)
+                        } else {
+                            Log.w(TAG, "Comparison: ${nextApp.packageName} not installed — skipping")
+                            session.advance()
+                            if (session.isComplete) {
+                                val capturedSession2 = session
+                                comparisonSession = null
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    com.orion.ui.ComparisonOverlay.show(
+                                        this@ScreenCaptureService,
+                                        capturedSession2,
+                                        onBook = { chosenApp -> onBookingChosen?.invoke(chosenApp) },
+                                        onDismiss = { onSessionDismissed?.invoke() }
+                                    )
+                                    stopSelf()
+                                }
+                            } else {
+                                val skippedTo = session.currentApp
+                                if (skippedTo != null) {
+                                    targetApp = skippedTo.packageName
+                                    pendingGoal = buildComparisonGoal(session.parsedGoal)
+                                    resetGoalState()
+                                    val nextIntent = this@ScreenCaptureService.packageManager.getLaunchIntentForPackage(skippedTo.packageName)
+                                        ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    if (nextIntent != null) this@ScreenCaptureService.startActivity(nextIntent)
+                                    else Log.w(TAG, "Comparison: ${skippedTo.packageName} also not installed — session may stall")
+                                }
+                            }
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        return false
+    }
 
     private fun dispatchAction(
         firstAction: com.orion.core.PlanAction?,
