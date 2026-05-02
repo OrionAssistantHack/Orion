@@ -417,6 +417,14 @@ class MainActivity : AppCompatActivity() {
             try {
                 withContext(Dispatchers.IO) { liteRTLMManager.initialize(modelPath) }
                 ScreenCaptureService.activeEngine = liteRTLMManager
+                ScreenCaptureService.pipeline = if (liteRTLMManager is com.orion.inference.LiteRTLMManager) {
+                    com.orion.inference.InferencePipeline(listOf(
+                        com.orion.inference.TextOnlyStep(liteRTLMManager),
+                        com.orion.inference.VisionStep(liteRTLMManager),
+                    ))
+                } else {
+                    com.orion.inference.InferencePipeline(listOf(com.orion.inference.VisionStep(liteRTLMManager)))
+                }
                 setStatusPill("ready")
                 ScreenCaptureService.triggerCaptureIfReady()
             } catch (e: Exception) {
