@@ -245,6 +245,49 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         }
     }
 
+    suspend fun planFromNodes(
+        goal: String,
+        nodes: List<Pair<String, android.graphics.Rect>>,
+        screenWidth: Int,
+        screenHeight: Int,
+        appPackage: String,
+        retryContext: String,
+        previousAction: String
+    ): Pair<com.orion.core.PerceptionResult, com.orion.core.Plan> {
+        val eng = engine ?: return fallback("engine_null")
+        try { conversation?.close() } catch (e: Exception) { Log.w(TAG, "conversation close: ${e.message}") }
+        conversation = try {
+            val samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.2)
+            eng.createConversation(ConversationConfig(samplerConfig = samplerConfig))
+        } catch (e: Exception) {
+            Log.e(TAG, "createConversation failed (text-only)", e)
+            return fallback("conv_create_failed_text_only")
+        }
+        val conv = conversation ?: return fallback("conv_null")
+        val prompt = buildTextOnlyPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction)
+        Log.d(TAG, "planFromNodes: ${nodes.size} nodes, ${prompt.length}ch")
+        return try {
+            val response = suspendCancellableCoroutine { cont ->
+                val sb = StringBuilder()
+                conv.sendMessageAsync(
+                    Contents.of(listOf(Content.Text(prompt))),
+                    object : MessageCallback {
+                        override fun onMessage(message: com.google.ai.edge.litertlm.Message) { sb.append(message.toString()) }
+                        override fun onDone() { cont.resume(sb.toString()) }
+                        override fun onError(throwable: Throwable) { cont.resumeWithException(throwable) }
+                    },
+                    emptyMap(),
+                )
+                cont.invokeOnCancellation { conv.cancelProcess() }
+            }
+            Log.d(TAG, "planFromNodes raw (${response.length}ch): ${response.take(300)}")
+            parseResponse(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "planFromNodes() failed", e)
+            fallback("text_only_error: ${e.message}")
+        }
+    }
+
     private fun parseResponse(raw: String): Pair<PerceptionResult, Plan> =
         companion_parseResponse(raw)
 
