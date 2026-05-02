@@ -3,6 +3,7 @@ package com.orion
 import android.accessibilityservice.AccessibilityService
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import com.orion.automation.AccessibilityAutomationExecutor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,9 @@ class OrionAccessibilityService : AccessibilityService() {
         val pkg = event?.packageName?.toString() ?: return
         currentPackage = pkg
         if (pkg in IGNORED_PACKAGES) return
+        // Don't let IME (keyboard) overlays override the tracked foreground app
+        val windowInfo = windows.find { it.id == event.windowId }
+        if (windowInfo?.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return
         lastAppPackage = pkg
 
         // Pin to target if one was set (Uber/Lyft/comparison mode). If target is blank,
