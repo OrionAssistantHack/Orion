@@ -19,6 +19,7 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.orion.core.ParsedGoal
 import com.orion.databinding.ActivityMainBinding
 import com.orion.inference.LiteRTLMManager
 import com.orion.ui.ComparisonOverlay
@@ -315,9 +316,14 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
                 return
             }
-            pendingComparisonGoal = parsed
-            requestScreenCaptureForComparison()
-            return
+            if (parsed is ParsedGoal.RideRequest && parsed.singleApp != null) {
+                selectedPackage = parsed.singleApp.packageName
+                // fall through to single-app path below
+            } else {
+                pendingComparisonGoal = parsed
+                requestScreenCaptureForComparison()
+                return
+            }
         }
 
         // "Open anything" mode: selectedPackage is blank; skip the launch-intent check.

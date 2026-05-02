@@ -25,6 +25,7 @@ class GoalParserTest {
         val result = parseGoal("Book me an Uber to the train station") as? ParsedGoal.RideRequest
         assertNotNull(result)
         assertEquals("the train station", result!!.destination)
+        assertEquals("com.ubercab", result.singleApp?.packageName)
     }
 
     @Test
@@ -32,6 +33,7 @@ class GoalParserTest {
         val result = parseGoal("Call a Lyft to 123 Main St") as? ParsedGoal.RideRequest
         assertNotNull(result)
         assertEquals("123 Main St", result!!.destination)
+        assertEquals("com.lyft.android", result.singleApp?.packageName)
     }
 
     @Test
@@ -65,5 +67,19 @@ class GoalParserTest {
     @Test
     fun parse_empty_returnsNull() {
         assertNull(parseGoal(""))
+    }
+
+    @Test
+    fun parse_bookACabTo_singleAppIsNull() {
+        val result = parseGoal("Book a cab to SFO Airport") as? ParsedGoal.RideRequest
+        assertNotNull(result)
+        assertNull(result!!.singleApp)
+    }
+
+    @Test
+    fun parse_getARideTo_singleAppIsNull() {
+        val result = parseGoal("Get a ride to downtown") as? ParsedGoal.RideRequest
+        assertNotNull(result)
+        assertNull(result!!.singleApp)
     }
 }

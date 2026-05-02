@@ -54,8 +54,8 @@ internal fun buildPrompt(
     val retryPrefix = if (retryContext.isNotBlank()) "IMPORTANT - $retryContext\n\n" else ""
     Log.d(TAG, retryPrefix)
     val historyPrefix = if (previousAction.isNotBlank()) "Previous action: $previousAction — you are now on a NEW screen. Continue navigating toward the goal.\n\n" else ""
-    Log.d(TAG, "History prefix:")
-    Log.d(TAG, historyPrefix)
+    // Log.d(TAG, "History prefix:")
+    // Log.d(TAG, historyPrefix)
 
     return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}Analyze this Android app screenshot. What SINGLE action should be taken to make progress?$nodeList
 

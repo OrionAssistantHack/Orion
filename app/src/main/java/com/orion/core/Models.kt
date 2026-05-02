@@ -61,6 +61,7 @@ sealed class ParsedGoal {
         val destination: String,
         override val rawGoal: String,
         val preference: Preference = Preference.NONE,
+        val singleApp: KnownApp? = null,
     ) : ParsedGoal()
 
     data class FoodOrder(

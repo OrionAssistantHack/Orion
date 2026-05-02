@@ -1,13 +1,22 @@
 package com.orion
 
 import com.orion.core.AppCategory
+import com.orion.core.KnownApp
 import com.orion.core.ParsedGoal
 import com.orion.core.Preference
 
-// Ride: "book/get/order/find/call/hail/request [me/us] [a] [adjectives] cab/ride/taxi/car/vehicle to X"
+// Ride: generic vehicle words only — branded requests handled by BRANDED_RIDE_PATTERN
 private val RIDE_PATTERN = Regex(
     """(?:book|get|order|find|call|hail|request)(?:\s+(?:me|us))?\s+(?:an?\s+)?""" +
     """(?:\w+\s+)*(?:cab|ride|taxi|car|vehicle|transport)\s+""" +
+    """(?:to|toward|towards|going to|headed to|heading to)\s+(.+)""",
+    RegexOption.IGNORE_CASE
+)
+
+// Ride: user named a specific app — group 1 = brand keyword, group 2 = destination
+private val BRANDED_RIDE_PATTERN = Regex(
+    """(?:book|get|order|find|call|hail|request)(?:\s+(?:me|us))?\s+(?:an?\s+)?""" +
+    """(?:\w+\s+)*(uber|lyft|waymo|bolt|grab|ola)\s+""" +
     """(?:to|toward|towards|going to|headed to|heading to)\s+(.+)""",
     RegexOption.IGNORE_CASE
 )
@@ -43,6 +52,20 @@ fun parseGoal(goal: String): ParsedGoal? {
     val trimmed = goal.trim()
     if (trimmed.isBlank()) return null
     val preference = detectPreference(trimmed)
+
+    BRANDED_RIDE_PATTERN.find(trimmed)?.let { m ->
+        val brandKey = m.groupValues[1].lowercase()
+        val destination = m.groupValues[2].trim()
+        val knownApp = AppRegistry.ALL.firstOrNull {
+            it.category == AppCategory.RIDES && it.displayName.lowercase() == brandKey
+        }
+        return ParsedGoal.RideRequest(
+            destination = destination,
+            rawGoal = trimmed,
+            preference = preference,
+            singleApp = knownApp,
+        )
+    }
 
     RIDE_PATTERN.find(trimmed)?.let { m ->
         return ParsedGoal.RideRequest(
