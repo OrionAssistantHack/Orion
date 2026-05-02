@@ -204,9 +204,9 @@ class LiteRTLMManager private constructor(private val context: Context) : Infere
         val conv = conversation ?: return fallback("conv_null")
 
         val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
         val imageBytes = stream.toByteArray()
-        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB image + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction).length}ch prompt)")
+        Log.d(TAG, "Sending prompt (${imageBytes.size / 1024}KB JPEG + ${buildPrompt(goal, nodes, screenWidth, screenHeight, appPackage, retryContext, previousAction).length}ch prompt)")
 
         return try {
             val response = suspendCancellableCoroutine { cont ->
