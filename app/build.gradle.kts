@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.litertlm.android)
 
     testImplementation(libs.junit)
+    testImplementation("io.mockk:mockk:1.13.10")
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.robolectric)
     testImplementation("org.json:json:20231013")
