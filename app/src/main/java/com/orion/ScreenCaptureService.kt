@@ -76,6 +76,7 @@ class ScreenCaptureService : Service() {
         @Volatile var targetApp: String = ""
         @Volatile var onPlanResult: ((String, com.orion.core.Plan) -> Unit)? = null
         @Volatile var activeEngine: InferenceEngine? = null
+        @Volatile var pipeline: com.orion.inference.InferencePipeline? = null
 
         @Volatile var comparisonSession: com.orion.core.ComparisonSession? = null
         @Volatile var onBookingChosen: ((com.orion.core.KnownApp) -> Unit)? = null
