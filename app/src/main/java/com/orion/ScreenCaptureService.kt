@@ -130,7 +130,7 @@ class ScreenCaptureService : Service() {
         }
 
         fun triggerCapture() {
-            instance?.get()?.captureHandler?.post { instance?.get()?.captureFrame() }
+            instance?.get()?.captureHandler?.post { instance?.get()?.runAgentCycle() }
         }
 
         fun resetGoalState() {
@@ -155,7 +155,7 @@ class ScreenCaptureService : Service() {
                 && eng.isReady()
             ) {
                 Log.i(TAG, "triggerCaptureIfReady — firing for $targetApp")
-                svc.captureHandler.post { svc.captureFrame() }
+                svc.captureHandler.post { svc.runAgentCycle() }
             }
         }
     }
@@ -259,7 +259,7 @@ class ScreenCaptureService : Service() {
     }
 
     @Suppress("DEPRECATION")
-    internal fun captureFrame() {
+    internal fun runAgentCycle() {
         if (inferenceActive.get()) {
             imageReader?.acquireLatestImage()?.close()
             Log.d(TAG, "Inference in flight — dropping frame")
@@ -269,7 +269,7 @@ class ScreenCaptureService : Service() {
         if (cooldownRemaining > 0) {
             imageReader?.acquireLatestImage()?.close()
             Log.d(TAG, "Post-action cooldown — waiting ${cooldownRemaining}ms before next capture")
-            captureHandler.postDelayed({ captureFrame() }, cooldownRemaining)
+            captureHandler.postDelayed({ runAgentCycle() }, cooldownRemaining)
             return
         }
         frameCounter++
@@ -343,7 +343,7 @@ class ScreenCaptureService : Service() {
                         bitmapForInference.recycle()
                         inferenceActive.set(false)
                         Log.w(TAG, "Node list empty — skipping inference, retrying in 800ms")
-                        captureHandler.postDelayed({ captureFrame() }, 800L)
+                        captureHandler.postDelayed({ runAgentCycle() }, 800L)
                         return
                     }
 
@@ -352,7 +352,7 @@ class ScreenCaptureService : Service() {
                         bitmapForInference.recycle()
                         inferenceActive.set(false)
                         Log.w(TAG, "Too few nodes (${nodes.size}/$MIN_NODES_THRESHOLD) — screen may still be loading, retry $thinNodeRetryCount/$MAX_THIN_NODE_RETRIES in 800ms")
-                        captureHandler.postDelayed({ captureFrame() }, 800L)
+                        captureHandler.postDelayed({ runAgentCycle() }, 800L)
                         return
                     }
                     thinNodeRetryCount = 0
@@ -362,7 +362,7 @@ class ScreenCaptureService : Service() {
                         bitmapForInference.recycle()
                         inferenceActive.set(false)
                         Log.d(TAG, "Root window is '$rootPkg', not '$targetApp' — window still transitioning, retrying in 400ms")
-                        captureHandler.postDelayed({ captureFrame() }, 400L)
+                        captureHandler.postDelayed({ runAgentCycle() }, 400L)
                         return
                     }
 
@@ -373,7 +373,7 @@ class ScreenCaptureService : Service() {
                             bitmapForInference.recycle()
                             inferenceActive.set(false)
                             Log.d(TAG, "Node list unchanged after action — window still transitioning, retrying in 400ms ($unchangedFingerprintCount/$MAX_UNCHANGED_FINGERPRINT_RETRIES)")
-                            captureHandler.postDelayed({ captureFrame() }, 400L)
+                            captureHandler.postDelayed({ runAgentCycle() }, 400L)
                             return
                         }
                         Log.w(TAG, "Node list still unchanged after $MAX_UNCHANGED_FINGERPRINT_RETRIES retries — running inference on the new screenshot anyway (a11y tree may not reflect on-screen changes such as a keyboard overlay)")
@@ -456,7 +456,7 @@ class ScreenCaptureService : Service() {
                                     }
                                     android.os.Handler(android.os.Looper.getMainLooper()).post { stopSelf() }
                                 } else {
-                                    captureHandler.postDelayed({ captureFrame() }, POST_ACTION_DELAY_MS)
+                                    captureHandler.postDelayed({ runAgentCycle() }, POST_ACTION_DELAY_MS)
                                 }
                                 return@launch
                             }
@@ -474,38 +474,7 @@ class ScreenCaptureService : Service() {
                             // used here because launcher events are filtered by the a11y config.
                             val actionExecuted = dispatchAction(firstAction, actionType, nodes, screenW, screenH, perception.rawDescription)
 
-                            if (!actionExecuted) {
-                                if (retryCount < MAX_TAP_RETRIES) {
-                                    retryCount++
-                                    Log.w(TAG, "No action executed — scheduling retry $retryCount/$MAX_TAP_RETRIES")
-                                    captureHandler.postDelayed({ captureFrame() }, 600L)
-                                } else {
-                                    Log.e(TAG, "No action executed after $MAX_TAP_RETRIES retries — giving up")
-                                    retryCount = 0
-                                    retryContext = ""
-                                }
-                            } else {
-                                when (actionType) {
-                                    "press_home" -> {
-                                        // Extract the node text we just tapped (e.g. "Tapped 'Messages'" → "Messages")
-                                        // and stash it on hideNextCycleText so the next inference cycle removes
-                                        // that node from the list the model sees. We do NOT touch the prompt —
-                                        // the constraint is enforced purely by hiding the node.
-                                        hideNextCycleText = Regex("[Tt]apped '(.+?)'").find(lastSuccessfulAction)?.groupValues?.get(1)
-                                        retryCount /= 2
-                                        lastSuccessfulAction = ""
-                                        retryContext = ""
-                                    }
-                                    "swipe" -> {
-                                        // Per design: leave retryCount and lastSuccessfulAction untouched —
-                                        // swipe is exploratory and the meaningful prior action is still relevant.
-                                    }
-                                    else -> {
-                                        retryCount = 0
-                                        retryContext = ""
-                                    }
-                                }
-                            }
+                            handleRetry(actionExecuted, actionType)
 
                             onPlanResult?.let { cb ->
                                 android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -525,7 +494,7 @@ class ScreenCaptureService : Service() {
                 bitmapForInference.recycle()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "captureFrame failed: ${e.message}")
+            Log.e(TAG, "runAgentCycle failed: ${e.message}")
         } finally {
             image.close()
         }
@@ -636,6 +605,41 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun handleRetry(actionExecuted: Boolean, actionType: String?) {
+        if (!actionExecuted) {
+            if (retryCount < MAX_TAP_RETRIES) {
+                retryCount++
+                Log.w(TAG, "No action executed — scheduling retry $retryCount/$MAX_TAP_RETRIES")
+                captureHandler.postDelayed({ runAgentCycle() }, 600L)
+            } else {
+                Log.e(TAG, "No action executed after $MAX_TAP_RETRIES retries — giving up")
+                retryCount = 0
+                retryContext = ""
+            }
+        } else {
+            when (actionType) {
+                "press_home" -> {
+                    // Extract the node text we just tapped (e.g. "Tapped 'Messages'" → "Messages")
+                    // and stash it on hideNextCycleText so the next inference cycle removes
+                    // that node from the list the model sees. We do NOT touch the prompt —
+                    // the constraint is enforced purely by hiding the node.
+                    hideNextCycleText = Regex("[Tt]apped '(.+?)'").find(lastSuccessfulAction)?.groupValues?.get(1)
+                    retryCount /= 2
+                    lastSuccessfulAction = ""
+                    retryContext = ""
+                }
+                "swipe" -> {
+                    // Per design: leave retryCount and lastSuccessfulAction untouched —
+                    // swipe is exploratory and the meaningful prior action is still relevant.
+                }
+                else -> {
+                    retryCount = 0
+                    retryContext = ""
+                }
+            }
+        }
+    }
 
     private fun handleComparisonSession(
         perception: com.orion.core.PerceptionResult,
