@@ -544,110 +544,7 @@ class ScreenCaptureService : Service() {
                             //                it needs is off-screen; scroll and re-perceive.
                             // The discrimination lives in the prompt rules; lastAppPackage cannot be
                             // used here because launcher events are filtered by the a11y config.
-                            val actionExecuted: Boolean = when {
-                                firstAction == null -> {
-                                    Log.w(TAG, "Model returned empty actions — raw: ${perception.rawDescription.take(200)}")
-                                    false
-                                }
-                                actionType == "swipe" -> {
-                                    val direction = firstAction.direction ?: "up"
-                                    val ok = OrionAccessibilityService.instance?.executor?.swipe(direction, screenW, screenH)?.success == true
-                                    Log.i(TAG, "swipe direction=$direction → $ok")
-                                    if (ok) postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                    ok
-                                }
-                                actionType == "press_home" -> {
-                                    val homeOk = OrionAccessibilityService.instance?.executor?.pressHome()?.success == true
-                                    Log.i(TAG, "press_home → $homeOk")
-                                    if (homeOk && targetApp.isNotBlank()) {
-                                        val launchIntent = packageManager.getLaunchIntentForPackage(targetApp)
-                                            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        if (launchIntent != null) {
-                                            Log.i(TAG, "press_home: relaunching $targetApp")
-                                            startActivity(launchIntent)
-                                        } else {
-                                            Log.w(TAG, "press_home: no launch intent for $targetApp")
-                                        }
-                                    }
-                                    if (homeOk) postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                    homeOk
-                                }
-                                else -> {
-                                    val action = firstAction
-                                    val nodeIdx = action.nodeIndex
-                                    val target = when {
-                                        nodeIdx != null && nodeIdx in nodes.indices ->
-                                            nodes[nodeIdx]
-                                        action.nodeText != null -> {
-                                            val t = action.nodeText
-                                            nodes.firstOrNull { it.first == t }
-                                                ?: nodes.firstOrNull { it.first.equals(t, ignoreCase = true) }
-                                                ?: nodes.firstOrNull { it.first.startsWith(t, ignoreCase = true) }
-                                                ?: nodes.firstOrNull { it.first.contains(t, ignoreCase = true) }
-                                        }
-                                        else -> null
-                                    }
-                                    if (target != null) {
-                                        if (action.type == "type_text" && action.text != null) {
-                                            val exec = OrionAccessibilityService.instance?.executor
-                                            val success = exec?.typeText(target.first, action.text) ?: false
-                                            if (success) {
-                                                Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
-                                                lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
-                                                retryContext = ""
-                                                postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                                pendingAutoSelectText = action.text
-                                            } else {
-                                                Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
-                                                retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
-                                            }
-                                            success
-                                        } else {
-                                            Log.i(TAG, "Auto-tapping '${target.first}' via ACTION_CLICK [nodeIdx=$nodeIdx]")
-                                            val result = OrionAccessibilityService.instance?.executor?.tapNode(target.first)
-                                            val tapped = result?.success == true
-                                            if (tapped) {
-                                                lastSuccessfulAction = "Tapped '${target.first}'"
-                                                retryContext = ""
-                                                postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                            } else {
-                                                Log.w(TAG, "ACTION_CLICK failed for '${target.first}' (${result?.errorCode}) — falling back to coordinates")
-                                                val cx = target.second.centerX().toFloat()
-                                                val cy = target.second.centerY().toFloat()
-                                                OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
-                                                lastSuccessfulAction = "Tapped '${target.first}'"
-                                                retryContext = ""
-                                                postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                            }
-                                            true
-                                        }
-                                    } else if (action.type == "type_text" && action.text != null) {
-                                        val exec = OrionAccessibilityService.instance?.executor
-                                        val success = exec?.typeTextFocused(action.text) ?: false
-                                        if (success) {
-                                            Log.i(TAG, "type_text via focused node text='${action.text}'")
-                                            lastSuccessfulAction = "Typed '${action.text}' into focused field"
-                                            retryContext = ""
-                                            postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                                            pendingAutoSelectText = action.text
-                                        } else {
-                                            Log.w(TAG, "type_text focused fallback failed — no input-focused node")
-                                            retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
-                                                "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
-                                                "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
-                                        }
-                                        success
-                                    } else {
-                                        retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
-                                            "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
-                                            "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
-                                        Log.w(TAG, "Tap resolution failed — nodeIdx=$nodeIdx nodeText=${action.nodeText}")
-                                        val nodeListStr = nodes.mapIndexed { i, (text, _) -> "[${i+1}] \"$text\"" }.joinToString(", ")
-                                        Log.w(TAG, "Resolution failed — available: $nodeListStr")
-                                        false
-                                    }
-                                }
-                            }
+                            val actionExecuted = dispatchAction(firstAction, actionType, nodes, screenW, screenH, perception.rawDescription)
 
                             if (!actionExecuted) {
                                 if (retryCount < MAX_TAP_RETRIES) {
@@ -811,4 +708,116 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun dispatchAction(
+        firstAction: com.orion.core.PlanAction?,
+        actionType: String?,
+        nodes: List<Pair<String, android.graphics.Rect>>,
+        screenW: Int,
+        screenH: Int,
+        rawDescription: String
+    ): Boolean = when {
+        firstAction == null -> {
+            Log.w(TAG, "Model returned empty actions — raw: ${rawDescription.take(200)}")
+            false
+        }
+        actionType == "swipe" -> {
+            val direction = firstAction.direction ?: "up"
+            val ok = OrionAccessibilityService.instance?.executor?.swipe(direction, screenW, screenH)?.success == true
+            Log.i(TAG, "swipe direction=$direction → $ok")
+            if (ok) postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+            ok
+        }
+        actionType == "press_home" -> {
+            val homeOk = OrionAccessibilityService.instance?.executor?.pressHome()?.success == true
+            Log.i(TAG, "press_home → $homeOk")
+            if (homeOk && targetApp.isNotBlank()) {
+                val launchIntent = packageManager.getLaunchIntentForPackage(targetApp)
+                    ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (launchIntent != null) {
+                    Log.i(TAG, "press_home: relaunching $targetApp")
+                    startActivity(launchIntent)
+                } else {
+                    Log.w(TAG, "press_home: no launch intent for $targetApp")
+                }
+            }
+            if (homeOk) postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+            homeOk
+        }
+        else -> {
+            val action = firstAction
+            val nodeIdx = action.nodeIndex
+            val target = when {
+                nodeIdx != null && nodeIdx in nodes.indices ->
+                    nodes[nodeIdx]
+                action.nodeText != null -> {
+                    val t = action.nodeText
+                    nodes.firstOrNull { it.first == t }
+                        ?: nodes.firstOrNull { it.first.equals(t, ignoreCase = true) }
+                        ?: nodes.firstOrNull { it.first.startsWith(t, ignoreCase = true) }
+                        ?: nodes.firstOrNull { it.first.contains(t, ignoreCase = true) }
+                }
+                else -> null
+            }
+            if (target != null) {
+                if (action.type == "type_text" && action.text != null) {
+                    val exec = OrionAccessibilityService.instance?.executor
+                    val success = exec?.typeText(target.first, action.text) ?: false
+                    if (success) {
+                        Log.i(TAG, "type_text into '${target.first}' text='${action.text}'")
+                        lastSuccessfulAction = "Typed '${action.text}' into '${target.first}'"
+                        retryContext = ""
+                        postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                        pendingAutoSelectText = action.text
+                    } else {
+                        Log.w(TAG, "type_text failed for '${target.first}' — keyboard likely not visible, switching to tap_node")
+                        retryContext = "CORRECTION: type_text on '${target.first}' failed — the keyboard was likely not visible, please confirm and accordingly, switch to tap_node."
+                    }
+                    success
+                } else {
+                    Log.i(TAG, "Auto-tapping '${target.first}' via ACTION_CLICK [nodeIdx=$nodeIdx]")
+                    val result = OrionAccessibilityService.instance?.executor?.tapNode(target.first)
+                    val tapped = result?.success == true
+                    if (tapped) {
+                        lastSuccessfulAction = "Tapped '${target.first}'"
+                        retryContext = ""
+                        postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                    } else {
+                        Log.w(TAG, "ACTION_CLICK failed for '${target.first}' (${result?.errorCode}) — falling back to coordinates")
+                        val cx = target.second.centerX().toFloat()
+                        val cy = target.second.centerY().toFloat()
+                        OrionAccessibilityService.instance?.executor?.dispatchTap(cx, cy)
+                        lastSuccessfulAction = "Tapped '${target.first}'"
+                        retryContext = ""
+                        postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                    }
+                    true
+                }
+            } else if (action.type == "type_text" && action.text != null) {
+                val exec = OrionAccessibilityService.instance?.executor
+                val success = exec?.typeTextFocused(action.text) ?: false
+                if (success) {
+                    Log.i(TAG, "type_text via focused node text='${action.text}'")
+                    lastSuccessfulAction = "Typed '${action.text}' into focused field"
+                    retryContext = ""
+                    postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
+                    pendingAutoSelectText = action.text
+                } else {
+                    Log.w(TAG, "type_text focused fallback failed — no input-focused node")
+                    retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
+                        "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
+                        "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
+                }
+                success
+            } else {
+                retryContext = "CORRECTION: Previous attempt selected nodeIndex=${nodeIdx?.plus(1)} " +
+                    "nodeText=\"${action.nodeText}\" but neither was found in the accessibility tree. " +
+                    "The exact available nodes are listed above. Pick the nodeIndex that best matches the goal."
+                Log.w(TAG, "Tap resolution failed — nodeIdx=$nodeIdx nodeText=${action.nodeText}")
+                val nodeListStr = nodes.mapIndexed { i, (text, _) -> "[${i+1}] \"$text\"" }.joinToString(", ")
+                Log.w(TAG, "Resolution failed — available: $nodeListStr")
+                false
+            }
+        }
+    }
 }
