@@ -88,6 +88,61 @@ Action type rules:
 - Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible (e.g. ride booked, order placed, item added to cart, setting changed). Never use "none" mid-flow just because a field is filled — always tap the next button ("Done", "Confirm", "Request", "Book", "Next", "Place Order", "Checkout") to advance."""
 }
 
+internal fun buildTextOnlyPrompt(
+    goal: String,
+    nodes: List<Pair<String, android.graphics.Rect>>,
+    screenWidth: Int,
+    screenHeight: Int,
+    appPackage: String,
+    retryContext: String,
+    previousAction: String
+): String {
+    val nodeList = if (nodes.isNotEmpty()) {
+        "\n\nClickable elements on screen:\n" +
+        nodes.mapIndexed { i, (text, rect) ->
+            val label = if (text.length > 60) text.take(60) + "…" else text
+            "[${i+1}] \"$label\" at (${rect.centerX()}, ${rect.centerY()})"
+        }.joinToString("\n")
+    } else ""
+
+    val ctx = buildString {
+        if (screenWidth > 0) append("Screen: ${screenWidth}x${screenHeight}px. ")
+        if (appPackage.isNotBlank()) append("App: $appPackage. ")
+    }
+
+    val retryPrefix = if (retryContext.isNotBlank()) "IMPORTANT - $retryContext\n\n" else ""
+    val historyPrefix = if (previousAction.isNotBlank()) "Previous action: $previousAction — you are now on a NEW screen. Continue navigating toward the goal.\n\n" else ""
+
+    return """${retryPrefix}${historyPrefix}${if (goal.isNotBlank()) "User goal: $goal\n\n" else ""}${ctx}You are given the accessible UI elements of an Android screen (no screenshot). What SINGLE action should be taken to make progress?$nodeList
+
+Reply ONLY with a single valid JSON object, no markdown:
+{
+  "keyboardVisible": <true if a QWERTY layout is likely visible based on context, false otherwise>,
+  "action": {
+    "type": "<tap_node|type_text|swipe|press_home|none|need_image>",
+    "nodeIndex": <1-based index from the clickable elements list, or null>,
+    "nodeText": "<exact text of the node, or null>",
+    "text": "<text to type if type_text, otherwise null>",
+    "direction": "<up|down for swipe, otherwise null>"
+  },
+  "screenPhase": "<UNKNOWN|HOME|LOADING|INPUT_REQUIRED|SELECTION|CONFIRMATION>",
+  "extractedData": {"price": "...", "eta": "...", "service": "..."},
+  "confidence": 0.0,
+  "summaryForUser": "<one sentence: what action is being taken>"
+}
+Emit exactly ONE action — never a list, never multiple. If no action is needed, set "action.type" to "none". nodeIndex must be a valid index from the clickable elements list above.
+
+Action type rules:
+- If "keyboardVisible" is false, action.type MUST be one of "tap_node", "swipe", "press_home", or "need_image". "type_text" is forbidden, and "none" is forbidden unless the goal is fully achieved.
+- If "keyboardVisible" is true and text must be entered, action.type MUST be "type_text". Set nodeIndex to the 1-based index of the focused input field, and set text to the string to type.
+- Use tap_node for buttons, links, cards, and input placeholders (e.g. "Where to?", "Book Ride", "Search"). This is the default — only use swipe or press_home if tap_node clearly cannot make progress.
+- Use "swipe" with direction "up" (reveals content below) or "down" (reveals content above) ONLY when the screen is clearly scrollable and the element you need is off-screen. Set nodeIndex/nodeText/text to null.
+- On the Android launcher / home screen, if the app you need is not visible, swipe up to open the app drawer before tapping any app.
+- Use "press_home" ONLY when the current screen does NOT belong to an app where the user's goal can be accomplished. Set nodeIndex/nodeText/text/direction to null. Never press_home just because a button is missing — swipe instead.
+- Use "none" ONLY when the user's goal is completely achieved and a final confirmation screen is visible. Never use "none" mid-flow — always tap the next button to advance.
+- Use "need_image" ONLY when node labels are ambiguous, empty, or icon-only (e.g. unlabelled image buttons, CAPTCHAs, map views, graphical carousels) and you cannot determine the correct action from node text alone. If labels include readable English text like "Where to?", "Book Ride", "Search", do NOT use need_image. Set all other action fields to null."""
+}
+
 class LiteRTLMManager private constructor(private val context: Context) : InferenceEngine {
 
     private var engine: Engine? = null

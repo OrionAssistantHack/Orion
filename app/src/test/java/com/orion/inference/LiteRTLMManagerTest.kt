@@ -5,6 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import com.orion.inference.buildTextOnlyPrompt
 
 @RunWith(RobolectricTestRunner::class)
 class LiteRTLMManagerTest {
@@ -61,5 +62,40 @@ class LiteRTLMManagerTest {
         assertEquals("$12.50", perception.extractedData["price"])
         assertTrue(plan.actions.isEmpty())
         assertTrue(plan.goalReached)
+    }
+
+    @Test
+    fun `buildTextOnlyPrompt does not reference screenshot`() {
+        val prompt = buildTextOnlyPrompt("open lyft", emptyList(), 1080, 2400, "me.lyft.android", "", "")
+        assertFalse("Must not say 'analyze this.*screenshot'", prompt.contains("Analyze this Android app screenshot"))
+        assertTrue("Must say 'no screenshot'", prompt.contains("no screenshot"))
+    }
+
+    @Test
+    fun `buildTextOnlyPrompt includes need_image in action type list`() {
+        val prompt = buildTextOnlyPrompt("open lyft", emptyList(), 1080, 2400, "me.lyft.android", "", "")
+        assertTrue(prompt.contains("need_image"))
+    }
+
+    @Test
+    fun `buildTextOnlyPrompt includes goal and app package`() {
+        val prompt = buildTextOnlyPrompt("book a ride", emptyList(), 1080, 2400, "com.ubercab", "", "")
+        assertTrue(prompt.contains("book a ride"))
+        assertTrue(prompt.contains("com.ubercab"))
+    }
+
+    @Test
+    fun `buildTextOnlyPrompt includes retry prefix when retryContext provided`() {
+        val prompt = buildTextOnlyPrompt("goal", emptyList(), 0, 0, "", "previous node not found", "")
+        assertTrue(prompt.startsWith("IMPORTANT - previous node not found"))
+    }
+
+    @Test
+    fun `parseResponse parses need_image action`() {
+        val raw = """{"action":{"type":"need_image","nodeIndex":null,"nodeText":null,"text":null,"direction":null},"screenPhase":"UNKNOWN","extractedData":{},"confidence":0.3,"summaryForUser":"need image"}"""
+        val (perception, plan) = LiteRTLMManager.parseResponse(raw)
+        assertEquals("need_image", plan.actions[0].type)
+        assertFalse(plan.goalReached)
+        assertEquals(0.3f, perception.confidence, 0.01f)
     }
 }
