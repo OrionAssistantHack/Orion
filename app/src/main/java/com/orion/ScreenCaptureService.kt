@@ -8,8 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
@@ -36,7 +34,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 import java.io.FileWriter
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
@@ -277,31 +274,34 @@ class ScreenCaptureService : Service() {
         val frameNum = frameCounter
         val image = imageReader?.acquireLatestImage() ?: return
         try {
-            val plane = image.planes[0]
-            val buffer = plane.buffer
-            val rowStride = plane.rowStride
-            val pixelStride = plane.pixelStride
-            val rowPadding = rowStride - pixelStride * image.width
-
-            val bitmap = Bitmap.createBitmap(
-                image.width + rowPadding / pixelStride,
-                image.height,
-                Bitmap.Config.ARGB_8888
-            )
-            bitmap.copyPixelsFromBuffer(buffer)
-
-            val bitmapForInference = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-
             // FLAG_SECURE detection — two-stage: cheap center pre-filter, then 5×5 grid
-            val centerPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
-            val flagSecure = if (Color.red(centerPixel) >= 30 || Color.green(centerPixel) >= 30 || Color.blue(centerPixel) >= 30) {
+            val imgPlane = image.planes[0]
+            val imgBuffer = imgPlane.buffer
+            val imgRowStride = imgPlane.rowStride
+            val imgW = image.width
+            val imgH = image.height
+
+            fun samplePixel(x: Int, y: Int): Int {
+                val idx = y * imgRowStride + x * 4
+                val r = imgBuffer.get(idx).toInt() and 0xFF
+                val g = imgBuffer.get(idx + 1).toInt() and 0xFF
+                val b = imgBuffer.get(idx + 2).toInt() and 0xFF
+                return android.graphics.Color.rgb(r, g, b)
+            }
+
+            val centerPixel = samplePixel(imgW / 2, imgH / 2)
+            val flagSecure = if (android.graphics.Color.red(centerPixel) >= 30 ||
+                android.graphics.Color.green(centerPixel) >= 30 ||
+                android.graphics.Color.blue(centerPixel) >= 30) {
                 false
             } else {
                 val fractions = floatArrayOf(0.1f, 0.3f, 0.5f, 0.7f, 0.9f)
                 var blackCount = 0
                 for (fx in fractions) for (fy in fractions) {
-                    val px = bitmap.getPixel((bitmap.width * fx).toInt(), (bitmap.height * fy).toInt())
-                    if (Color.red(px) < 30 && Color.green(px) < 30 && Color.blue(px) < 30) blackCount++
+                    val px = samplePixel((imgW * fx).toInt(), (imgH * fy).toInt())
+                    if (android.graphics.Color.red(px) < 30 &&
+                        android.graphics.Color.green(px) < 30 &&
+                        android.graphics.Color.blue(px) < 30) blackCount++
                 }
                 blackCount >= 24
             }
@@ -309,20 +309,7 @@ class ScreenCaptureService : Service() {
                 Log.w(TAG, "FLAG_SECURE likely active — grid check: 24+/25 sample points near-black")
             }
 
-            val outDir = getExternalFilesDir(null) ?: filesDir
-            val file = File(outDir, "frame_${System.currentTimeMillis()}.jpg")
-            try {
-                FileOutputStream(file).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
-                }
-                Log.i(TAG, "Frame #$frameNum saved → ${file.absolutePath}")
-                pruneFrameFiles(outDir, keep = MAX_FRAME_FILES)
-            } finally {
-                bitmap.recycle()
-            }
-
             if (targetApp.isNotBlank() && OrionAccessibilityService.lastAppPackage != targetApp) {
-                bitmapForInference.recycle()
                 Log.d(TAG, "Skipping inference — lastApp=${OrionAccessibilityService.lastAppPackage}, target=$targetApp")
                 return
             }
@@ -341,7 +328,6 @@ class ScreenCaptureService : Service() {
                     }
 
                     if (nodes.isEmpty()) {
-                        bitmapForInference.recycle()
                         inferenceActive.set(false)
                         Log.w(TAG, "Node list empty — skipping inference, retrying in 800ms")
                         captureHandler.postDelayed({ runAgentCycle() }, 800L)
@@ -350,7 +336,6 @@ class ScreenCaptureService : Service() {
 
                     if (nodes.size < MIN_NODES_THRESHOLD && thinNodeRetryCount < MAX_THIN_NODE_RETRIES) {
                         thinNodeRetryCount++
-                        bitmapForInference.recycle()
                         inferenceActive.set(false)
                         Log.w(TAG, "Too few nodes (${nodes.size}/$MIN_NODES_THRESHOLD) — screen may still be loading, retry $thinNodeRetryCount/$MAX_THIN_NODE_RETRIES in 800ms")
                         captureHandler.postDelayed({ runAgentCycle() }, 800L)
@@ -360,7 +345,6 @@ class ScreenCaptureService : Service() {
 
                     val rootPkg = OrionAccessibilityService.instance?.rootInActiveWindow?.also { it.recycle() }?.packageName?.toString()
                     if (targetApp.isNotBlank() && rootPkg != null && rootPkg != targetApp) {
-                        bitmapForInference.recycle()
                         inferenceActive.set(false)
                         Log.d(TAG, "Root window is '$rootPkg', not '$targetApp' — window still transitioning, retrying in 400ms")
                         captureHandler.postDelayed({ runAgentCycle() }, 400L)
@@ -371,7 +355,6 @@ class ScreenCaptureService : Service() {
                     if (fingerprint == lastNodeFingerprint && lastSuccessfulAction.isNotBlank() && retryCount == 0) {
                         unchangedFingerprintCount++
                         if (unchangedFingerprintCount <= MAX_UNCHANGED_FINGERPRINT_RETRIES) {
-                            bitmapForInference.recycle()
                             inferenceActive.set(false)
                             Log.d(TAG, "Node list unchanged after action — window still transitioning, retrying in 400ms ($unchangedFingerprintCount/$MAX_UNCHANGED_FINGERPRINT_RETRIES)")
                             captureHandler.postDelayed({ runAgentCycle() }, 400L)
@@ -403,7 +386,6 @@ class ScreenCaptureService : Service() {
                             pendingAutoSelectText = null
                             retryContext = ""
                             postActionCooldownUntil = System.currentTimeMillis() + POST_ACTION_DELAY_MS
-                            bitmapForInference.recycle()
                             inferenceActive.set(false)
                             return
                         } else {
@@ -412,8 +394,6 @@ class ScreenCaptureService : Service() {
                         }
                     }
 
-                    val screenW = bitmapForInference.width
-                    val screenH = bitmapForInference.height
                     inferenceScope.launch {
                         try {
                             // Hide-next-cycle hard filter: when press_home fired last cycle we stashed
@@ -432,7 +412,19 @@ class ScreenCaptureService : Service() {
                                     }
                             } else rawNodes
                             val inferenceStartMs = System.currentTimeMillis()
-                            val (perception, plan) = lm.perceiveAndPlan(bitmapForInference, pendingGoal, nodes, screenW, screenH, targetApp, retryContext, if (retryCount == 0) lastSuccessfulAction else "")
+                            val activePipeline = pipeline ?: com.orion.inference.InferencePipeline(listOf(com.orion.inference.VisionStep(lm)))
+                            val cycleContext = com.orion.inference.CycleContext(
+                                image = image,
+                                nodes = nodes,
+                                goal = pendingGoal,
+                                screenW = imgW,
+                                screenH = imgH,
+                                appPackage = targetApp,
+                                retryContext = retryContext,
+                                previousAction = if (retryCount == 0) lastSuccessfulAction else "",
+                                frameNum = frameNum,
+                            )
+                            val (perception, plan) = activePipeline.run(cycleContext)
                             val elapsedMs = System.currentTimeMillis() - inferenceStartMs
                             Log.i(TAG, "Frame #$frameNum [${lm.getDescription()}] ${elapsedMs}ms | phase=${perception.screenPhase} conf=%.2f | ${plan.summaryForUser}".format(perception.confidence))
                             // Log.i(TAG, "Raw response: ${perception.rawDescription.take(500)}")
@@ -473,7 +465,7 @@ class ScreenCaptureService : Service() {
                             //                it needs is off-screen; scroll and re-perceive.
                             // The discrimination lives in the prompt rules; lastAppPackage cannot be
                             // used here because launcher events are filtered by the a11y config.
-                            val actionExecuted = dispatchAction(firstAction, actionType, nodes, screenW, screenH, perception.rawDescription)
+                            val actionExecuted = dispatchAction(firstAction, actionType, nodes, imgW, imgH, perception.rawDescription)
 
                             handleRetry(actionExecuted, actionType)
 
@@ -483,16 +475,12 @@ class ScreenCaptureService : Service() {
                                 }
                             }
                         } finally {
-                            bitmapForInference.recycle()
                             inferenceActive.set(false)
                         }
                     }
                 } else {
-                    bitmapForInference.recycle()
                     Log.d(TAG, "Inference in flight — skipping frame")
                 }
-            } else {
-                bitmapForInference.recycle()
             }
         } catch (e: Exception) {
             Log.e(TAG, "runAgentCycle failed: ${e.message}")
