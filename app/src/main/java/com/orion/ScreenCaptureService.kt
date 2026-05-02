@@ -722,6 +722,10 @@ class ScreenCaptureService : Service() {
             Log.w(TAG, "Model returned empty actions — raw: ${rawDescription.take(200)}")
             false
         }
+        actionType == "need_image" -> {
+            Log.w(TAG, "need_image reached dispatcher — VisionStep should have handled this")
+            false
+        }
         actionType == "swipe" -> {
             val direction = firstAction.direction ?: "up"
             val ok = OrionAccessibilityService.instance?.executor?.swipe(direction, screenW, screenH)?.success == true
