@@ -317,24 +317,25 @@
     <div class="max-w-6xl mx-auto px-5 text-center">
       <div class="reveal max-w-3xl mx-auto">
         <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight">See Orion in action.</h2>
-        <p class="mt-4 text-brand-muted text-lg">A 60-second demo: type a goal, watch Orion comparison-shop your ride, then book it.</p>
+        <p class="mt-4 text-brand-muted text-lg">A three-minute demo: type a goal, watch Orion comparison-shop your ride, then book it.</p>
       </div>
 
       <div class="mt-10 reveal">
         <div class="demo-stage">
-          <div class="phone-frame">
-            <div class="phone-screen">
-              <img src="assets/sc3.png" alt="Orion selecting Priority Pickup in Lyft" class="phone-img phone-img-fit" />
-            </div>
-            <div class="phone-pip" aria-hidden="true">
-              <span class="phone-pip-ring"></span>
-              <span class="phone-pip-core">O</span>
-            </div>
-          </div>
+          <video
+            class="demo-video"
+            controls
+            playsinline
+            preload="metadata"
+            poster="assets/orion-demo-poster.jpg"
+            width="1080" height="1920">
+            <source src="assets/orion-demo.mp4" type="video/mp4" />
+            Your browser doesn't support embedded video.
+          </video>
           <div class="demo-caption">
             <div class="text-xs font-semibold uppercase tracking-wider text-brand-orange">Live capture</div>
-            <p class="mt-2">Orion picked the highlighted Priority Pickup automatically — no taps from you.</p>
-            <p class="mt-3">Watch it sweep three apps, surface the cheapest fare, then commit to the booking — all in under a minute.</p>
+            <p class="mt-2">Everything you see is Orion driving a real phone — the screen capture, the reasoning and the taps all happen on-device.</p>
+            <p class="mt-3">Watch it sweep three apps, surface the cheapest fare, then commit to the booking.</p>
           </div>
         </div>
       </div>
@@ -364,7 +365,7 @@
         <span class="text-sm text-brand-muted">Orion · built for the hackathon · 2026</span>
       </div>
       <div class="flex items-center gap-6 text-sm text-brand-muted">
-        <a class="hover:text-brand-ink" href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+        <a class="hover:text-brand-ink" href="https://github.com/OrionAssistantHack/Orion" target="_blank" rel="noopener">GitHub</a>
         <a class="hover:text-brand-ink" href="#top">Back to top</a>
       </div>
     </div>

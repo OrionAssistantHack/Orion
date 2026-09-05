@@ -314,12 +314,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   box-shadow: 0 30px 60px -20px rgba(239, 68, 68, .3);
   text-align: left;
 }
+.demo-video {
+  width: 300px;
+  aspect-ratio: 9 / 16;
+  display: block;
+  border-radius: 20px;
+  background: #000;
+  box-shadow: 0 20px 40px -14px rgba(0, 0, 0, .6);
+}
 .demo-caption { color: #FFF7ED; }
 .demo-caption p { color: rgba(255, 247, 237, .75); }
 .demo-caption code { background: rgba(255,255,255,.12); color: #FFF7ED; }
 @media (max-width: 720px) {
   .demo-stage { grid-template-columns: 1fr; padding: 22px; gap: 22px; text-align: center; }
-  .demo-stage .phone-frame { margin: 0 auto; }
+  .demo-video { width: min(300px, 100%); margin: 0 auto; }
 }
 
 /* ============ Install steps ============ */
